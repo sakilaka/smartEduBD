@@ -1,0 +1,295 @@
+<template>
+    <div class="card">
+        <div class="card-body min-height">
+            <form v-on:submit.prevent="search" class="col-12 row mb-3">
+                <!------------ Single Input ------------>
+                <SelectSearch title="All Status" field="status" :datas="$root.global.status" loop_type="pluck" col="1"
+                    class="mb-2" />
+                <!------------ Single Input ------------>
+                <SelectSearch v-if="!$root.institution_id" title="All Institution" field="institution_id"
+                    :datas="$root.global.institutions" val="id" val_title="name" />
+                <!------------ Single Input ------------>
+                <SelectSearch title="All Institution Category" field="institution_category_id"
+                    :datas="$root.global.institution_categories" val="id" val_title="name" />
+                <!------------ Single Input ------------>
+                <SelectSearch title="All Session" field="academic_session_id" :datas="sessions_filter(search_data.institution_category_id, 'search_data')
+                    " val="id" val_title="name" />
+                <!------------ Single Input ------------>
+                <SelectSearch title="All Campus" field="campus_id" :datas="campuses_filter(search_data.institution_id)"
+                    val="id" val_title="name" />
+                <!------------ Single Input ------------>
+                <SelectSearch title="All Shift" field="shift_id"
+                    :datas="shift_filter(search_data.institution_id, 'search_data')" val="shift_id"
+                    val_title="shift_name" col="1" />
+                <!------------ Single Input ------------>
+                <SelectSearch title="All Medium" field="medium_id"
+                    :datas="medium_filter(search_data.institution_id, 'search_data')" val="medium_id"
+                    val_title="medium_name" />
+                <!------------ Single Input ------------>
+                <SelectSearch title="All Class" field="academic_class_id" :datas="category_classes_filter(
+                    search_data.institution_id,
+                    search_data.institution_category_id,
+                    'search_data'
+                )
+                    " val="academic_class_id" val_title="class_name" />
+
+                <!------------ Single Input ------------>
+                <SelectSearch title="All Group" field="group_id"
+                    :datas="group_filter(search_data.institution_id, 'search_data')" val="group_id"
+                    val_title="group_name" />
+                <!------------ Single Input ------------>
+                <SelectSearch title="All Section" field="section_id"
+                    :datas="section_filter(search_data.institution_id, 'search_data')" val="section_id"
+                    val_title="section_name" />
+                <!------------ Single Input ------------>
+                <SelectSearch title="All Exam" field="exam_name"
+                    :datas="exam_filter(search_data.institution_category_id, 'search_data')" val="name" val_title="name"
+                    :selected="search_data.exam_name || ''" />
+                <!------------ Single Input ------------>
+                <SelectSearch title="All Gender" field="gender" :datas="[
+                    { id: 'Male', name: 'Male' },
+                    { id: 'Female', name: 'Female' },
+                    { id: 'Others', name: 'Others' },
+                ]" val="id" val_title="name" />
+
+                <div class="mt-2"></div>
+
+                <!-- search -->
+                <Search :fields_name="fields_name">
+                </Search>
+            </form>
+
+            <div class="col-md-2 mb-2 text-end">
+                <button type="button" class="btn btn-success w-100" @click="downloadBulkSeatCards"
+                    :disabled="$root.tableSpinner">
+                    <i class="fas fa-download mr-1"></i> Download All Seat Cards
+                </button>
+            </div>
+
+
+
+            <!-- Student Data -->
+            <!-- <div v-if="table.datas.length > 0" class="student-data-container">
+                <pre v-for="student in table.datas" :key="student.id" class="student-data">
+                    <strong>Software ID:</strong> {{ student.software_id }}
+                    <strong>Name:</strong> {{ student.name_en }}
+                    <strong>Roll:</strong> {{ student.profile.roll_number }}
+                    <strong>Campus/Shift:</strong> {{ student.campus.name }} ({{ student.shift.name }})
+                    <strong>Medium:</strong> {{ student.medium.name }}
+                    <strong>Class/Section:</strong> {{ student.academic_class?.name }} ({{ student.academic_session?.name }})
+                </pre>
+            </div>
+            <div v-else class="text-center py-4">
+                No students found
+            </div>
+
+            <div class="box-footer clearfix">
+                <Pagination :url="model" :search_data="search_data" v-if="!$root.tableSpinner" />
+            </div> -->
+            <!-- Pagination -->
+        </div>
+
+        <!-- View Student -->
+        <SubjectChoice v-if="Object.keys(student_info).length > 0" :student="student_info" :data="student_subjects" />
+
+        <BulkDelete :lists="table.datas" />
+    </div>
+</template>
+
+<script>
+    import BulkDelete from "@components/backend/elements/Table/BulkDelete.vue";
+
+    // define model name
+    const model = "student";
+
+    // Add Or Back
+    const addOrBack = {
+        route: model + ".create",
+        title: model,
+        icon: "plus-circle",
+    };
+
+    // define table coloumn show in datatable / datalist
+    const tableColumns = [
+        { field: "student_id", title: "Software ID", width: "9%", align: "center" },
+        { field: "name_en", title: "Student" },
+        { field: "guardian", title: "Guardian" },
+        { field: "campus_shift", title: "Campus/Shift Info" },
+        { field: "class_section", title: "Class/Section Info" },
+        {
+            field: "status",
+            title: "Status",
+            align: "center",
+            width: "5%",
+        },
+    ];
+
+    //json fields for export excel
+    const json_fields = {
+        Institution: "institution.name",
+        Campus: "campus.name",
+        Shift: "shift.name",
+        "Medium/Version": "medium.name",
+        "Academic Class": "academic_class.name",
+        Group: "group.name",
+        Section: "section.name",
+
+        "Software ID": "software_id",
+        "Roll Number": "profile.roll_number",
+        "Name (en)": "name_en",
+        "Name (bn)": "name_bn",
+        "NID/Birth Reg No": "profile.nid_or_birth_reg",
+        "Date of Birth": "profile.dob",
+        Religion: "profile.religion",
+        Gender: "profile.gender",
+        Disability: "profile.disability",
+
+        "Fathers Name (en)": "profile.fathers_name_en",
+        "Fathers Name (bn)": "profile.fathers_name_bn",
+        "Fathers Mobile": "profile.fathers_mobile",
+        "Fathers NID/Birth Reg No": "profile.fathers_nid_or_birth_reg",
+
+        "Mothers Name (en)": "profile.mothers_name_en",
+        "Mothers Name (bn)": "profile.mothers_name_bn",
+        "Mothers Mobile": "profile.mothers_mobile",
+        "Mothers NID/Birth Reg No": "profile.mothers_nid_or_birth_reg",
+
+        Mobile: "mobile",
+        Email: "email",
+        "Present Address": "profile.address",
+        "Permanent Address": "profile.permanent_address",
+
+        "Guardian Type": "guardian.type",
+        "Guardian Relations": "guardian.relations",
+        "Guardian Name (en)": "guardian.name_en",
+        "Guardian Name (bn)": "guardian.name_bn",
+        "Guardian NID/Birth Reg No": "guardian.nid_or_birth_reg",
+        "Guardian Mobile": "guardian.mobile",
+        "Guardian Email": "guardian.email",
+    };
+
+    export default {
+        components: { BulkDelete },
+
+        data() {
+            return {
+                model: model,
+                json_fields: json_fields,
+                download_spinner: false,
+                fields_name: {
+                    0: "Select One",
+                    software_id: "Software ID",
+                    name_en: "Name (en)",
+                    mobile: "Student Mobile",
+                    roll_number: "Roll",
+                    guardian_mobile: "Guardian Mobile",
+                },
+                search_data: {
+                    pagination: 10,
+                    field_name: "software_id",
+                    value: "",
+                    institution_id: "",
+                    institution_category_id: "",
+                    academic_session_id: "",
+                    campus_id: "",
+                    medium_id: "",
+                    group_id: "",
+                    section_id: "",
+                    shift_id: "",
+                    exam_name: "All Exam",
+                    academic_class_id: "",
+                    gender: "",
+                    status: "active",
+                },
+                table: {
+                    columns: tableColumns,
+                    routes: {},
+                    datas: [],
+                    meta: [],
+                    links: [],
+                },
+                student_info: {},
+                student_subjects: {},
+            };
+        },
+
+        methods: {
+            destroy(id) {
+                this.destroy_data(this.model, id, this.search_data);
+            },
+
+            search() {
+                this.get_paginate_data(this.model, this.search_data);
+            },
+
+            downloadZipImage() {
+                if (confirm("Are you sure want to download ZIP image?")) {
+                    this.notify(
+                        "Please wait a moment, ZIP file is getting ready for download",
+                        "success"
+                    );
+                    axios
+                        .post("/download-student-zip-image", this.search_data)
+                        .then((res) => {
+                            if (res.status == 200) {
+                                window.location = res.data;
+                            }
+                        })
+                        .catch((error) => {
+                            if (error.response.status === 422) {
+                                if (error.response.data.exception) {
+                                    this.$bvModal.show("validate-error");
+                                    this.$root.exception_errors = error.response.data.exception;
+                                }
+                            }
+                        });
+                }
+            },
+            downloadBulkSeatCards() {
+                if (confirm("Are you sure you want to download seat cards for all filtered students?")) {
+                    // Show loading indicator
+                    this.$root.spinner = true;
+
+                    // Convert search_data to JSON string for the API
+                    const searchParams = JSON.stringify(this.search_data);
+
+                    // Create a temporary form to submit the request
+                    const form = document.createElement('form');
+                    form.method = 'GET';
+                    form.action = '/admin/seat-card-bulk';
+
+                    // Add search params as hidden input
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'search_params';
+                    input.value = searchParams;
+                    form.appendChild(input);
+
+                    // Submit the form
+                    document.body.appendChild(form);
+                    form.submit();
+
+                    // Clean up
+                    document.body.removeChild(form);
+
+                    // Hide loading indicator after a delay
+                    setTimeout(() => {
+                        this.$root.spinner = false;
+                    }, 2000);
+                }
+            }
+        },
+
+        created() {
+            this.getRouteName(this.model);
+            // this.setBreadcrumbs(this.model, "index", null, addOrBack);
+            this.get_paginate_data(this.model, this.search_data);
+        },
+
+        mounted() {
+            if (this.$root.institution_id) {
+                this.search_data.institution_id = this.$root.institution_id;
+            }
+        },
+    };
+</script>
