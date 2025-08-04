@@ -188,6 +188,11 @@
             {{ row.item.student.name_en }}
           </td>
         </template>
+        <template v-slot:[`student_roll`]="row">
+          <td>
+            {{ row.item.student.profile.roll_number }}
+          </td>
+        </template>
         <template v-slot:[`purpose`]="row">
           <td>
             {{ row.item.head.name_en }}
@@ -356,6 +361,7 @@ const addOrBack = {};
 // define table coloumn show in datatable / datalist
 const tableColumns = [
   { field: "student", title: "Student Info" },
+  { field: "student_roll", title: "Student Roll" },
   { field: "campus_shift", title: "Campus/Shift Info" },
   { field: "class_section", title: "Class/Section Info" },
   { field: "purpose", title: "Purpose" },

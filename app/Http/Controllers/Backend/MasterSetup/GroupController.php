@@ -11,6 +11,7 @@ use App\Models\MasterSetup\Group;
 use Exception;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
+use App\Models\AcademicClassMapping;
 
 class GroupController extends Controller
 {
@@ -125,5 +126,26 @@ class GroupController extends Controller
         ], [
             //ex: 'name' => "This name is required" (custom message)
         ]);
+    }
+
+    public function getGroups($institution_id, $academic_class_id)
+    {
+        // Get group IDs from mapping table
+        $groupIds = AcademicClassMapping::where('institution_id', $institution_id)
+            ->where('academic_class_id', $academic_class_id)
+            ->pluck('group_id')
+            ->unique()
+            ->toArray();
+
+        if (empty($groupIds)) {
+            return response()->json([]);
+        }
+
+        // Get group details
+        $groups = Group::whereIn('id', $groupIds)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        return response()->json($groups);
     }
 }

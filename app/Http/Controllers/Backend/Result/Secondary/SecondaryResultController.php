@@ -104,6 +104,7 @@ class SecondaryResultController extends Controller
             'institution_id'    => $request->institution_id,
             'medium_id'         => $request->medium_id,
             'academic_class_id' => $request->academic_class_id,
+            'academic_group_id' => $request->group_id,
         ])->first();
 
         if (empty($subjectAssign)) {
@@ -335,7 +336,7 @@ class SecondaryResultController extends Controller
 
     /**
      * Sync result
-     * 
+     *
      * @param  \Illuminate\Http\Request  $request
      * @param  \App\Models\SecondaryResult $secondaryResult
      * @return \Illuminate\Http\Response

@@ -8,6 +8,7 @@ namespace App\Models\Result;
 
 use App\Models\Base\BaseModel;
 use App\Models\Student;
+use App\Models\StudentSubjectAssign;
 
 class SecondaryResultDetails extends BaseModel
 {
@@ -52,6 +53,7 @@ class SecondaryResultDetails extends BaseModel
             )
             ->oldest('sorting');
     }
+
     public function except_fourth_marks()
     {
         return $this->hasMany(SecondaryResultMarks::class, 'secondary_result_details_id')
@@ -73,12 +75,19 @@ class SecondaryResultDetails extends BaseModel
                 'combined_gpa',
                 'combined_letter_grade',
             )
-            ->where('fourth_subject', 0)
+            // ->where('fourth_subject', 0)
+            ->where(function ($query) {
+                $query->where('fourth_subject', '!=', 1)
+                    ->orWhereHas('subjectAssignment', function ($q) {
+                        $q->where('main_subject', 1);
+                    });
+            })
             ->oldest('sorting');
     }
+
     public function fourth_marks()
     {
-        return $this->hasOne(SecondaryResultMarks::class, 'secondary_result_details_id')
+        $query = $this->hasOne(SecondaryResultMarks::class, 'secondary_result_details_id')->with('subject')
             ->select(
                 'id',
                 'secondary_result_details_id',
@@ -93,9 +102,23 @@ class SecondaryResultDetails extends BaseModel
                 'letter_grade',
                 'fourth_subject'
             )
-            ->where('fourth_subject', 1)
-            ->oldest('sorting');
+            ->where('fourth_subject', 1);
+
+        // Get the academic class ID safely
+        $classId = $this->result->academic_class_id ??
+            ($this->student->academic_class_id ?? null);
+
+        // Only apply main_subject condition if class is not 8,9,10 and exists
+        if ($classId && !in_array($classId, [8, 9, 10])) {
+            $query->whereHas('subjectAssignment', function ($q) {
+                $q->where('main_subject', 0);
+            });
+        }
+
+        return $query;
     }
+
+
     public function student()
     {
         return $this->belongsTo(Student::class)
@@ -110,6 +133,7 @@ class SecondaryResultDetails extends BaseModel
                 'students.software_id',
             );
     }
+    
     public function result()
     {
         return $this->belongsTo(SecondaryResult::class, 'secondary_result_id');

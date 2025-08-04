@@ -34,17 +34,27 @@ class StudentController extends Controller
      */
     public function index()
     {
-        $data['current_student_id'] = auth()->user()->current_student_id;
-
-        $data['students'] = auth()->user()
+        $data['students'] = $students = auth()->user()
             ->students()
             ->with([
                 'profile:student_id,profile',
                 'academic_class',
-                'institution' 
+                'institution'
             ])
-            ->select('id', 'academic_class_id', 'institution_id', 'software_id', 'name_en')
+            ->select('id', 'academic_class_id', 'institution_id', 'software_id', 'name_en', 'status')
             ->get();
+
+        $savedStudentId = auth()->user()->current_student_id;
+        if ($savedStudentId) {
+            $data['current_student_id'] = $savedStudentId;
+        } else {
+            $firstStudent = $students->filter(function ($student) {
+                return $student->status === 'active' &&
+                    optional($student->institution)->status === 'active';
+            })->first();
+
+            $data['current_student_id'] = $firstStudent ? $firstStudent->id : null;
+        }
 
         return $this->sendResponse($data);
     }

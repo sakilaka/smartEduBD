@@ -48,7 +48,13 @@ Vue.mixin({
             try {
                 this.$root.spinner = spinner;
                 axios.get(`/${model}`, { params: params })
-                    .then(res => this[dataVar] = res.data)
+                    .then(res => {
+                        this[dataVar] = res.data;
+
+                        Object.entries(this[dataVar]).forEach(([key, value]) => {
+                            console.log(`${key}:`, value);
+                        });
+                    })
                     .catch(error => console.log(error))
                     .finally(alw => {
                         this.$root.spinner = false
@@ -77,61 +83,61 @@ Vue.mixin({
 
         // =================  store data =================
         store(model_name, data, redirect = null) {
-    this.$root.validation_errors = {};
-    this.$root.submit = true;
+            this.$root.validation_errors = {};
+            this.$root.submit = true;
 
-    console.log("➡️ Attempting to store:", model_name);
-    console.log("📦 Payload data:", data);
+            console.log("➡️ Attempting to store:", model_name);
+            console.log("📦 Payload data:", data);
 
-    axios.post("/" + model_name, data)
-        .then(res => {
-            console.log("✅ Server response:", res.data);
+            axios.post("/" + model_name, data)
+                .then(res => {
+                    console.log("✅ Server response:", res.data);
 
-            if (res.data.message) {
-                this.notify(res.data.message, "success");
-            } else if (res.data.error) {
-                this.notify(res.data.error, "error");
-                return false;
-            } else if (res.data.warning) {
-                this.notify(res.data.warning, "warning");
-                return false;
-            }
+                    if (res.data.message) {
+                        this.notify(res.data.message, "success");
+                    } else if (res.data.error) {
+                        this.notify(res.data.error, "error");
+                        return false;
+                    } else if (res.data.warning) {
+                        this.notify(res.data.warning, "warning");
+                        return false;
+                    }
 
-            if (res.data.message && redirect != 'no') {
-                if (redirect == 'edit' && res.data.id) {
-                    console.log(`🔁 Redirecting to edit page: ${model_name}.edit`, res.data.id);
-                    this.$router.push({
-                        name: model_name + '.edit',
-                        params: { id: res.data.id },
-                        query: this.$route.query
-                    });
-                } else {
-                    let url = redirect ? redirect : model_name + '.index';
-                    console.log(`🔁 Redirecting to: ${url}`);
-                    this.$router.push({ name: url, query: this.$route.query });
-                }
-            }
-        })
-        .catch(error => {
-            console.error("❌ Error occurred during store():", error);
+                    if (res.data.message && redirect != 'no') {
+                        if (redirect == 'edit' && res.data.id) {
+                            console.log(`🔁 Redirecting to edit page: ${model_name}.edit`, res.data.id);
+                            this.$router.push({
+                                name: model_name + '.edit',
+                                params: { id: res.data.id },
+                                query: this.$route.query
+                            });
+                        } else {
+                            let url = redirect ? redirect : model_name + '.index';
+                            console.log(`🔁 Redirecting to: ${url}`);
+                            this.$router.push({ name: url, query: this.$route.query });
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error("❌ Error occurred during store():", error);
 
-            if (error.response.status === 422) {
-                this.$bvModal.show("validate-error");
-                if (error.response.data.exception) {
-                    this.$root.exception_errors = error.response.data.exception;
-                    console.warn("⚠️ Backend exception:", error.response.data.exception);
-                } else {
-                    this.$root.validation_errors = error.response.data.errors || {};
-                    console.warn("⚠️ Validation errors:", error.response.data.errors);
-                }
+                    if (error.response.status === 422) {
+                        this.$bvModal.show("validate-error");
+                        if (error.response.data.exception) {
+                            this.$root.exception_errors = error.response.data.exception;
+                            console.warn("⚠️ Backend exception:", error.response.data.exception);
+                        } else {
+                            this.$root.validation_errors = error.response.data.errors || {};
+                            console.warn("⚠️ Validation errors:", error.response.data.errors);
+                        }
 
-                this.notify("You need to fill empty mandatory fields", "warning");
-            } else {
-                console.error("🔴 Unexpected error response:", error.response);
-            }
-        })
-        .finally(alw => setTimeout(() => (this.$root.submit = false), 400));
-},
+                        this.notify("You need to fill empty mandatory fields", "warning");
+                    } else {
+                        console.error("🔴 Unexpected error response:", error.response);
+                    }
+                })
+                .finally(alw => setTimeout(() => (this.$root.submit = false), 400));
+        },
 
 
         // =================  update data =================

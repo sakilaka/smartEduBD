@@ -11,6 +11,16 @@ use App\Models\Base\BaseModel;
 class Teacher extends BaseModel
 {
     protected $guarded = ['id'];
+    protected $fillable = [
+        'designation_id',
+        'index_number',
+        'date_of_birth',
+        'joining_date_lecturer',
+        'present_address',
+        'permanent_address',
+        'institution_id',
+    ];
+
 
     protected static $logName = "Teacher";
 

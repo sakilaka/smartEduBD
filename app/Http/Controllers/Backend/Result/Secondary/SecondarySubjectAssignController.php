@@ -12,6 +12,7 @@ use App\Http\Resources\Resource;
 use App\Models\MasterSetup\Institution;
 use App\Models\Result\SecondarySubjectAssign;
 use App\Models\Result\SecondarySubjectAssignDetails;
+use App\Models\TeacherSubjectAssign;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -27,11 +28,12 @@ class SecondarySubjectAssignController extends Controller
     {
         $institution_id = Institution::current() ?? $request->institution_id;
 
-        $query = SecondarySubjectAssign::with('institution', 'medium', 'academic_class')->latest();
+        $query = SecondarySubjectAssign::with('institution', 'medium', 'academic_class', 'academic_group')->latest();
         $query->whereLike($request->field_name, $request->value);
         $query->whereAny('institution_id', $institution_id);
         $query->whereAny('medium_id', $request->medium_id);
         $query->whereAny('academic_class_id', $request->academic_class_id);
+        $query->whereAny('academic_group_id', $request->academic_group_id);
 
         $datas = $query->paginate($request->pagination);
         return new Resource($datas);
@@ -67,6 +69,7 @@ class SecondarySubjectAssignController extends Controller
                     'institution_id'    => $data['institution_id'],
                     'medium_id'         => $data['medium_id'],
                     'academic_class_id' => $data['academic_class_id'],
+                    'academic_group_id' => $data['academic_group_id'],
                 ])->first();
                 if (!empty($exists)) {
                     return response()->json(['error' => 'Sorry!! Already subject assign'], 200);
@@ -111,13 +114,7 @@ class SecondarySubjectAssignController extends Controller
         return view('layouts.backend_app');
     }
 
-    /**
-     * Update the specified resource in storage.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  \App\Models\SubjectAssign  $secondarySubjectAssign
-     * @return \Illuminate\Http\Response
-     */
+
     public function update(Request $request, SecondarySubjectAssign $secondarySubjectAssign)
     {
         if ($this->validateCheck($request, $secondarySubjectAssign->id)) {
@@ -180,18 +177,40 @@ class SecondarySubjectAssignController extends Controller
     public function subjectLists(Request $request)
     {
         $subjects = [];
+
+        // Step 1: Check for secondary subject assignment based on institution/class/medium
         $subjectAssign = SecondarySubjectAssign::where([
             'institution_id'    => $request->institution_id,
             'medium_id'         => $request->medium_id,
             'academic_class_id' => $request->academic_class_id,
+            'academic_group_id' => $request->academic_group_id,
         ])->first();
 
+        // Step 2: If assignment exists
         if (!empty($subjectAssign)) {
-            $subjects = $subjectAssign->details()->with('subject')->get();
+            // Base subjects from assignment
+            $assignedSubjectDetails = $subjectAssign->details()->with('subject')->get();
+
+            // Step 3: Check if the logged-in user is a teacher
+            $authAdminId = auth()->id();
+            $teacherSubjectIds = TeacherSubjectAssign::where('admin_id', $authAdminId)
+                ->pluck('subject_id')
+                ->toArray();
+
+            // Step 4: Filter based on teacher subject_ids, if any found
+            if (!empty($teacherSubjectIds)) {
+                $assignedSubjectDetails = $assignedSubjectDetails->filter(function ($item) use ($teacherSubjectIds) {
+                    return in_array($item->subject_id, $teacherSubjectIds);
+                })->values(); // reset keys
+            }
+
+            // Set subjects
+            $subjects = $assignedSubjectDetails;
         }
 
         return response()->json($subjects);
     }
+
 
     /**
      * Validate form field.

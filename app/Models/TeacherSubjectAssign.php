@@ -7,12 +7,18 @@
 namespace App\Models;
 
 use App\Models\Base\BaseModel;
+use App\Models\MasterSetup\Subject;
 
 class TeacherSubjectAssign extends BaseModel
 {
     protected $guarded = ['id'];
 
     protected static $logName = "Teacher Subject Assign";
+
+    public function subject()
+    {
+        return $this->belongsTo(Subject::class, 'subject_id');
+    }
 
     public static function getAssignId($pluck_id, $req = [])
     {

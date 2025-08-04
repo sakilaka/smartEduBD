@@ -95,6 +95,9 @@
                       <th :key="`3marks_heading${sbKey}`" style="width: 10px">
                         MCQ
                       </th>
+                      <th :key="`8marks_heading${sbKey}`" style="width: 10px">
+                        Prac
+                      </th>
                       <th :key="`5marks_heading${sbKey}`" style="width: 10px">
                         CON.
                       </th>
@@ -143,6 +146,13 @@
                         style="width: 10px"
                       >
                         {{ mark.mcq_mark | formatNumber }}
+                      </td>
+                      <td
+                        class="text-center"
+                        :key="`8marks${rmKey}`"
+                        style="width: 10px"
+                      >
+                        {{ mark.practical_mark | formatNumber }}
                       </td>
                       <td
                         class="text-center"

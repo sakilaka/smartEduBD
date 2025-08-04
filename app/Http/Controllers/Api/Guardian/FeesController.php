@@ -37,7 +37,7 @@ class FeesController extends Controller
     public function duesFeesLists()
     {
         $student = auth()->user()->current_student;
-
+        // dd($student);
         $data['invoice_no'] = Invoice::invoiceNumber();
         $data['fees_lists'] = $this->feesService->dues($student);
         $data['discounts']  = [];

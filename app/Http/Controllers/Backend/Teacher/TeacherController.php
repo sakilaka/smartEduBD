@@ -7,10 +7,13 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\Resource;
 use App\Imports\TeachersImport;
 use App\Models\Admin;
+use App\Models\Result\PrimarySubjectAssignDetails;
 use App\Models\System\Role;
+use App\Models\Teacher;
 use App\Models\TeacherSubjectAssign;
 use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Facades\Excel;
@@ -19,142 +22,141 @@ class TeacherController extends Controller
 {
     public function index(Request $request)
     {
-        $deptID        = auth()->guard('admin')->user()->department_id;
-        $department_id = !empty($request->department_id) ? $request->department_id : $deptID;
+        $query = Admin::with('institution')->latest('id');
 
-        $query  = Admin::with('department')->latest('id');
-        $query->whereLike($request->field_name, $request->value);
-        $query->whereAny('department_id', $department_id);
-        $query->where('type', 'Teacher');
+        $user = auth()->user();
 
-        if ($request->allData) {
-            return $query->get();
+        if ($user->role_id == 1) {
+            $query->where('type', 'Teacher');
         } else {
-            $datas = $query->paginate($request->pagination);
-            return new Resource($datas);
+            $query->where('type', 'Teacher')->where('institution_id', $user->institution_id);
+        }
+
+        if ($request->has('allData') && $request->allData) {
+            return response()->json($query->get());
+        } else {
+            $pagination = $request->pagination ?? 10; // default to 10 per page
+            return response()->json($query->paginate($pagination));
         }
     }
 
-    
+
+
     public function create()
     {
         return view('layouts.backend_app');
     }
 
- 
-   public function store(Request $request)
-{
-    // Start by logging the incoming request
-    Log::info('Teacher Store Request:', [
-        'full_url' => $request->fullUrl(),
-        'method' => $request->method(),
-        'input_data' => $request->all(),
-        'headers' => $request->headers->all()
-    ]);
 
-    try {
-        // First validate the request
-        if (!$this->validateCheck($request)) {
-            Log::warning('Validation failed in validateCheck');
+    public function store(Request $request)
+    {
+
+        try {
+            // First validate the request
+            if (!$this->validateCheck($request)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $this->validationErrors ?? 'Unknown validation errors'
+                ], 422);
+            }
+
+            DB::beginTransaction();
+
+            $data = $request->only('type', 'name', 'father_name', 'email', 'mobile', 'password', 'institution_id');
+            // dd($data);
+
+            // Check role
+            $role = Role::where('name', 'Teacher')->first();
+
+            if (!is_object($role)) {
+                Log::error('Teacher role not found');
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Teacher role not found in system'
+                ], 400);
+            }
+
+            // Create admin
+            $data['role_id'] = $role->id;
+            Log::info('Creating admin with data:', $data);
+            $admin = Admin::create($data);
+            Log::info('Admin created:', ['admin_id' => $admin->id]);
+
+            // Create teacher
+            $teacherInput = $request->teacher;
+
+            $admin->teacher()->create([
+                'designation_id' => $teacherInput['designation_id'],
+                'index_number' => $teacherInput['index_number'],
+                'date_of_birth' => $teacherInput['date_of_birth'],
+                'joining_date_lecturer' => $teacherInput['joining_date_lecturer'],
+                'present_address' => $teacherInput['present_address'],
+                'permanent_address' => $teacherInput['permanent_address'],
+            ]);
+
+            // dd($teacherInput);
+
+            // Subject assign
+            if (!empty($request->subject_assigns[0]) && !empty($request->subject_assigns[0]['subject_id'])) {
+                GlobalHelper::updelsert(
+                    'admin_id',
+                    $admin->id,
+                    TeacherSubjectAssign::class,
+                    $request->subject_assigns
+                );
+            }
+
+            // Send SMS
+            // if (!empty($admin->mobile)) {
+            //     Log::info('Sending SMS to:', ['mobile' => $admin->mobile]);
+            //     $password = $request->password;
+            //     $this->sendSms($admin->mobile, 'TeacherCreate', ['password' => $password], $admin);
+            // }
+
+            DB::commit();
+            Log::info('Transaction committed successfully');
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Teacher created successfully',
+                'data' => [
+                    'admin_id' => $admin->id,
+                    'teacher_id' => $admin->teacher->id
+                ]
+            ], 200);
+        } catch (\Illuminate\Database\QueryException $qe) {
+            DB::rollBack();
+            Log::error('Database Exception:', [
+                'message' => $qe->getMessage(),
+                'sql' => $qe->getSql(),
+                'bindings' => $qe->getBindings(),
+                'trace' => $qe->getTraceAsString()
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $this->validationErrors ?? 'Unknown validation errors'
-            ], 422);
-        }
+                'message' => 'Database error occurred',
+                'error' => $qe->getMessage(),
+                'error_info' => $qe->errorInfo ?? null
+            ], 500);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('General Exception:', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
+            ]);
 
-        DB::beginTransaction();
-        Log::info('Transaction started');
-
-        $data = $request->only('type', 'name', 'father_name', 'mother_name', 'email', 'mobile', 'password');
-        Log::debug('Extracted data:', $data);
-
-        // Check role
-        $role = Role::where('name', 'Teacher')->first();
-        Log::debug('Role fetched:', ['role' => $role]);
-
-        if (!is_object($role)) {
-            Log::error('Teacher role not found');
             return response()->json([
                 'success' => false,
-                'message' => 'Teacher role not found in system'
-            ], 400);
+                'message' => 'An error occurred while creating teacher',
+                'error' => $e->getMessage(),
+                'exception_type' => get_class($e)
+            ], 500);
         }
-
-        // Create admin
-        $data['role_id'] = $role->id;
-        Log::info('Creating admin with data:', $data);
-        $admin = Admin::create($data);
-        Log::info('Admin created:', ['admin_id' => $admin->id]);
-
-        // Create teacher
-        $teacherInput = $request->teacher;
-        Log::info('Creating teacher with designation:', ['designation_id' => $teacherInput['designation_id']]);
-        $admin->teacher()->create(['designation_id' => $teacherInput['designation_id']]);
-
-        // Subject assign
-        if (!empty($request->subject_assigns[0]) && !empty($request->subject_assigns[0]['subject_id'])) {
-            Log::info('Processing subject assignments:', $request->subject_assigns);
-            GlobalHelper::updelsert(
-                'admin_id',
-                $admin->id,
-                TeacherSubjectAssign::class,
-                $request->subject_assigns
-            );
-        }
-
-        // Send SMS
-        // if (!empty($admin->mobile)) {
-        //     Log::info('Sending SMS to:', ['mobile' => $admin->mobile]);
-        //     $password = $request->password;
-        //     $this->sendSms($admin->mobile, 'TeacherCreate', ['password' => $password], $admin);
-        // }
-
-        DB::commit();
-        Log::info('Transaction committed successfully');
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Teacher created successfully',
-            'data' => [
-                'admin_id' => $admin->id,
-                'teacher_id' => $admin->teacher->id
-            ]
-        ], 200);
-
-    } catch (\Illuminate\Database\QueryException $qe) {
-        DB::rollBack();
-        Log::error('Database Exception:', [
-            'message' => $qe->getMessage(),
-            'sql' => $qe->getSql(),
-            'bindings' => $qe->getBindings(),
-            'trace' => $qe->getTraceAsString()
-        ]);
-        
-        return response()->json([
-            'success' => false,
-            'message' => 'Database error occurred',
-            'error' => $qe->getMessage(),
-            'error_info' => $qe->errorInfo ?? null
-        ], 500);
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        Log::error('General Exception:', [
-            'message' => $e->getMessage(),
-            'file' => $e->getFile(),
-            'line' => $e->getLine(),
-            'trace' => $e->getTraceAsString()
-        ]);
-        
-        return response()->json([
-            'success' => false,
-            'message' => 'An error occurred while creating teacher',
-            'error' => $e->getMessage(),
-            'exception_type' => get_class($e)
-        ], 500);
     }
-}
 
 
     public function show(Request $request, $id)
@@ -162,28 +164,43 @@ class TeacherController extends Controller
         if ($request->format() == 'html') {
             return view('layouts.backend_app');
         }
-        $admin = Admin::with('role', 'teacher.designation', 'department', 'subject_assigns')
-            ->where('type', '!=', 'Admin')
-            ->find($id)
-            ->toArray();
+
+        // Load admin with relations
+        $adminModel = Admin::with('role', 'teacher.designation', 'subject_assigns.subject')->find($id);
+
+        $admin = $adminModel ? $adminModel->toArray() : [];
+
+        // You may be overriding designation_id here!
         $admin['teacher'] = !empty($admin['teacher']) ? $admin['teacher'] : ['designation_id' => null];
-        $admin['subject_assigns'] = !empty($admin['subject_assigns']) ? $admin['subject_assigns'] : [['status' => 'active']];
+
+        // Process subject assigns
+        if (!empty($admin['subject_assigns'])) {
+            foreach ($admin['subject_assigns'] as &$assign) {
+                if (!empty($assign['subject'])) {
+                    $assign['filteredSubjects'] = [$assign['subject']];
+                } else {
+                    $assign['filteredSubjects'] = [];
+                }
+            }
+        }
+
         return $admin;
     }
+
 
     public function edit($id)
     {
         return view('layouts.backend_app');
     }
 
-  
+
     public function update(Request $request, $id)
     {
         $admin = Admin::find($id);
         if ($this->validateCheck($request, $id)) {
             try {
                 // check role create or not
-                $role = Role::where('type', $request->type)->first();
+                $role = Role::where('name', $request->type)->first();
                 if (!is_object($role)) {
                     return response()->json(['error' => "Please create {$request->type} role"], 200);
                 }
@@ -214,7 +231,7 @@ class TeacherController extends Controller
         }
     }
 
-  
+
     public function destroy($id)
     {
         $admin = Admin::find($id);
@@ -241,6 +258,7 @@ class TeacherController extends Controller
             }
 
 
+
             Excel::import(new TeachersImport(), $request->file('excel_file'));
 
             return response()->json(['message' => 'Import Successfully!'], 200);
@@ -249,7 +267,7 @@ class TeacherController extends Controller
         }
     }
 
-    
+
     public function validateCheck($request, $id = null)
     {
         return $request->validate([

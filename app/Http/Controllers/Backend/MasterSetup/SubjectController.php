@@ -9,6 +9,10 @@ namespace App\Http\Controllers\Backend\MasterSetup;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Resource;
 use App\Models\MasterSetup\Subject;
+use App\Models\Result\PrimarySubjectAssign;
+use App\Models\Result\PrimarySubjectAssignDetails;
+use App\Models\Result\SecondarySubjectAssign;
+use App\Models\Result\SecondarySubjectAssignDetails;
 use Exception;
 use Illuminate\Http\Request;
 
@@ -86,13 +90,6 @@ class SubjectController extends Controller
         return view('layouts.backend_app');
     }
 
-    /**
-     * Update the specified resource in storage.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  \App\Models\Subject  $subject
-     * @return \Illuminate\Http\Response
-     */
     public function update(Request $request, Subject $subject)
     {
         if ($this->validateCheck($request, $subject->id)) {
@@ -105,12 +102,6 @@ class SubjectController extends Controller
         }
     }
 
-    /**
-     * Remove the specified resource from storage.
-     *
-     * @param  \App\Models\Subject  $subject
-     * @return \Illuminate\Http\Response
-     */
     public function destroy(Subject $subject)
     {
         if ($subject->delete()) {
@@ -120,11 +111,6 @@ class SubjectController extends Controller
         }
     }
 
-    /**
-     * Validate form field.
-     *
-     * @return \Illuminate\Http\Response
-     */
     public function validateCheck($request, $id = null)
     {
         return true;
@@ -133,5 +119,29 @@ class SubjectController extends Controller
         ], [
             //ex: 'name' => "This name is required" (custom message)
         ]);
+    }
+
+    public function getSubjectsByClass($classId, $groupId)
+    {
+        $assign = PrimarySubjectAssign::where('academic_class_id', $classId)->first();
+
+        if ($assign) {
+            $subjectIds = PrimarySubjectAssignDetails::where('primary_subject_assign_id', $assign->id)
+                ->pluck('subject_id');
+        } else {
+            // If not found in primary, try secondary
+            $assign = SecondarySubjectAssign::where('academic_class_id', $classId)->where('academic_group_id', $groupId)->first();
+
+            if ($assign) {
+                $subjectIds = SecondarySubjectAssignDetails::where('secondary_subject_assign_id', $assign->id)
+                    ->pluck('subject_id');
+            } else {
+                return response()->json([]);
+            }
+        }
+
+        $subjects = Subject::whereIn('id', $subjectIds)->get(['id', 'name_en']);
+
+        return response()->json($subjects);
     }
 }

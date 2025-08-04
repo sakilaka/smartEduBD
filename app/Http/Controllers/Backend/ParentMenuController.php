@@ -54,4 +54,8 @@ class ParentMenuController extends Controller
     {
         return view('layouts.backend_app');
     }
+    public function higherSecondaryResult()
+    {
+        return view('layouts.backend_app');
+    }
 }

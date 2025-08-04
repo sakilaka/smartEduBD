@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Backend\MasterSetup\GroupController;
+use App\Http\Controllers\Backend\MasterSetup\SubjectController;
 use App\Http\Controllers\Backend\Student\StudentController;
 use App\Http\Controllers\Backend\Teacher\TeacherController;
 use Illuminate\Support\Facades\Route;
@@ -38,6 +40,8 @@ Route::group(['middleware' => 'auth:admin'], function () {
         });
     });
 
+
+
     // test controller methods
     // Route::get('send-sms', 'TestController@sendSmsToTest');
     // Route::get('session-update', 'TestController@sessionUpdate');
@@ -52,6 +56,12 @@ Route::group(['namespace' => 'Backend', 'middleware' => 'auth:admin'], function 
     Route::get('get-designation', 'MasterSetup\DesignationController@index');
     Route::resource('designation',      'MasterSetup\DesignationController');
 
+    // subjectAssign
+    Route::get('get-student-subjects/{id}',   'Result\HigherSecondary\SubjectAssignController@index');
+    Route::get('classwise-subjects',   'Result\HigherSecondary\SubjectAssignController@subjectLists');
+    Route::post('subject-assign',   'Result\HigherSecondary\SubjectAssignController@store');
+    Route::resource('higherSecondarySubjectAssign', 'Result\HigherSecondary\SubjectAssignController');
+    Route::resource('higherSecondaryResult', 'Result\HigherSecondary\ResultController');
 
 
     /*-----SYSTEM PORTION-----*/
@@ -106,12 +116,14 @@ Route::group(['namespace' => 'Backend', 'middleware' => 'auth:admin'], function 
         Route::get('preports', 'ParentMenuController@studentPayments')->name('reports.studentPayments');
         Route::get('priResult', 'ParentMenuController@primaryResult')->name('result.primaryResult');
         Route::get('secResult', 'ParentMenuController@secondaryResult')->name('result.secondaryResult');
+        Route::get('higherSecResult', 'ParentMenuController@HigherSecondaryResult')->name('result.higherSecondaryResult');
 
         /*-----System Settings-----*/
         Route::resource('admin',    'AdminController');
         // Route::resource('teacher', 'Teacher\TeacherController');
-        // Index - List all teachers
 
+
+        // Index - List all teachers
 
         Route::match(['get', 'post'], 'teacher-import', 'Teacher\TeacherController@import')->name('teacher.import');
         Route::resource('leaveApplication', 'Teacher\LeaveApplicationController');
@@ -233,6 +245,26 @@ Route::group(['namespace' => 'Backend', 'middleware' => 'auth:admin'], function 
             });
 
             /*----- Higher Secondary-----*/
+            Route::group(['namespace' => 'HigherSecondary'], function () {
+                Route::resource('secondaryGradeManagement',   'SecondaryGradeManagementController');
+                // Route::resource('subjectAssign', 'SubjectAssignController');
+
+                Route::resource('secondaryClassTestResult', 'SecondaryClassTestResultController');
+                Route::post('secondaryClassTestResult-published', 'SecondaryClassTestResultController@published')->name('secondaryClassTestResult.published');
+                Route::get('secondaryClassTestResult-sync/{secondaryClassTestResult}', 'SecondaryClassTestResultController@syncResult')->name('secondaryClassTestResult.syncResult');
+                Route::get('secondaryClassTestResult-marksheet/{id}', 'SecondaryClassTestResultController@marksheet')->name('secondaryClassTestResult.marksheet');
+
+                // Route::resource('result',                'ResultController');
+                Route::post('secondaryResult-published',          'SecondaryResultController@published')->name('secondaryResult.published');
+                Route::get('secondaryResult-sync/{secondaryResult}/{convert}',  'SecondaryResultController@syncResult')->name('secondaryResult.syncResult');
+                Route::get('secondaryResult-report',              'SecondaryResultReportController@result')->name('secondaryResult.result');
+                Route::get('secondaryResult-classwise',         'SecondaryResultReportController@classwiseResult')->name('secondaryResult.classwiseResult');
+                Route::get('secondaryResult-subjectwise',         'SecondaryResultReportController@subjectwiseResult')->name('secondaryResult.subjectwiseResult');
+                Route::get('secondaryResult-marksheet/{id}',      'SecondaryResultReportController@marksheet')->name('secondaryResult.marksheet');
+                Route::get('secondaryResult-tabulation-sheet',    'SecondaryResultReportController@tabulationSheet')->name('secondaryResult.tabulationSheet');
+                Route::get('secondaryResult-grade-summary',       'SecondaryResultReportController@gradeSummary')->name('secondaryResult.gradeSummary');
+                Route::get('secondaryResult-number-sheet',        'SecondaryResultReportController@numberSheet')->name('secondaryResult.numberSheet');
+            });
         });
 
 
@@ -267,16 +299,44 @@ Route::group(['namespace' => 'Backend', 'middleware' => 'auth:admin'], function 
 });
 
 
-Route::get('teacher', [TeacherController::class, 'index'])->name('teacher.index');
-Route::get('teacher/create', [TeacherController::class, 'create'])->name('teacher.create');
-Route::post('/teacher', [TeacherController::class, 'store'])->name('teacher.store');
-Route::get('teacher/{teacher}', [TeacherController::class, 'show'])->name('teacher.show');
-Route::get('teacher/{teacher}/edit', [TeacherController::class, 'edit'])->name('teacher.edit');
-Route::put('teacher/{teacher}', [TeacherController::class, 'update'])->name('teacher.update');
-Route::delete('teacher/{teacher}', [TeacherController::class, 'destroy'])->name('teacher.destroy');
+// Route::get('teacher', [TeacherController::class, 'index'])->name('teacher.index');
+// Route::get('teacher/create', [TeacherController::class, 'create'])->name('teacher.create');
+// Route::post('/teacher', [TeacherController::class, 'store'])->name('teacher.store');
+// Route::get('teacher/{teacher}', [TeacherController::class, 'show'])->name('teacher.show');
+// Route::get('teacher/{teacher}/edit', [TeacherController::class, 'edit'])->name('teacher.edit');
+// Route::put('teacher/{teacher}', [TeacherController::class, 'update'])->name('teacher.update');
+// Route::delete('teacher/{teacher}', [TeacherController::class, 'destroy'])->name('teacher.destroy');
+
+// Route::resource('teacher',  'Backend\Teacher\TeacherController');
+
+Route::group(['middleware' => ['auth:admin']], function () {
+    Route::get('teacher', [TeacherController::class, 'index'])->name('teacher.index');
+    Route::get('teacher/create', [TeacherController::class, 'create'])->name('teacher.create');
+    Route::post('teacher', [TeacherController::class, 'store'])->name('teacher.store');
+    Route::get('teacher/{teacher}', [TeacherController::class, 'show'])->name('teacher.show');
+    Route::get('teacher/{teacher}/edit', [TeacherController::class, 'edit'])->name('teacher.edit');
+    Route::put('teacher/{teacher}', [TeacherController::class, 'update'])->name('teacher.update');
+    Route::delete('teacher/{teacher}', [TeacherController::class, 'destroy'])->name('teacher.destroy');
+});
+
+
+
+Route::get('/get-subjects-by-class/{classId}/{groupId}', [SubjectController::class, 'getSubjectsByClass']);
 
 
 Route::get('admit-card-bulk', [StudentController::class, 'downloadBulkAdminAdmit'])->name('admit.card');
 Route::get('seat-card-bulk', [StudentController::class, 'downloadBulkSeatCard'])->name('seat.card');
-// Route::get('admit-card-bulk',  'Backend\Student\Studentcontroller@downloadBulkAdminAdmit');
-// Route::get('seat-card-bulk',  'Backend\Student\Studentcontroller@downloadBulkSeatCard');
+
+Route::get('get-groups/{institution_id}/{academic_class_id}', [GroupController::class, 'getGroups']);
+
+
+
+Route::get('get-student-subjects/{id}', [StudentController::class, 'studentSubjectAssignFunction']);
+// Route::get('classwise-subjects', [StudentController::class, 'classWiseSubject']);
+Route::post('subject-assign', [StudentController::class, 'storeSubjectAssign']);
+
+// Route::get('classwise-subjects',   'SubjectAssignController@subjectLists');
+// Route::post('subject-assign',   'SubjectAssignController@store');
+
+
+

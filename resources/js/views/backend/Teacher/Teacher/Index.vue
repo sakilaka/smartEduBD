@@ -45,10 +45,11 @@ const addOrBack = {
 
 // define table coloumn show in datatable / datalist
 const tableColumns = [
+//   { field: "institution", subfield: "name", title: "Institution" },
+  { field: "institution.name", title: "Institution" },
   { field: "name", title: "Name" },
   { field: "email", title: "Email" },
   { field: "type", title: "Type" },
-  { field: "department", title: "Department", subfield: "name" },
   { field: "mobile", title: "Mobile" },
   { field: "status", title: "Status", align: "center", width: "8%" },
 ];

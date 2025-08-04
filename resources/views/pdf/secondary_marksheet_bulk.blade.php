@@ -118,6 +118,15 @@
 
 <body>
     @foreach ($result->details as $key => $detail)
+        @php
+            // Define combined subjects
+            $combinedSubjects = [
+                20 => 21, // Subject 20 combines with 21
+                22 => 23  // Subject 22 combines with 23
+            ];
+            $hiddenSubjects = [21, 23]; // Subjects to hide totals for
+        @endphp
+
         <div class="marksheet-body">
             <img src="{{ $detail->result->institution[$detail->result->certificate_bg] ?? '' }}" alt="">
             <div class="exam_name">
@@ -160,55 +169,111 @@
                 $totalPrac = 0;
                 $totalObtained = 0;
                 $totalHighest = 0;
+                $processedPairs = [];
             @endphp
             @if (!empty($detail->except_fourth_marks))
                 <table class="marks_info">
                     <tbody style="text-align:center">
+                        @php
+                            $fourthSubjects = collect($detail->except_fourth_marks)->where('fourth_subject', 1);
+                            $lastFourthSubject = $fourthSubjects->last();
+                        @endphp
                         @foreach ($detail->except_fourth_marks as $key => $mark)
                             @php
+                                $subjectId = $mark->subject_id;
+
+                                // Skip if already processed as part of a pair
+                                if (in_array($subjectId, $processedPairs)) {
+                                    continue;
+                                }
+
+                                // Check if this is part of a combined pair
+                                $isCombinedPrimary = array_key_exists($subjectId, $combinedSubjects);
+                                $isCombinedSecondary = in_array($subjectId, $combinedSubjects);
+                                $pairedSubjectId = $isCombinedPrimary ? $combinedSubjects[$subjectId] : null;
+                                $pairedMark = $pairedSubjectId ? collect($detail->except_fourth_marks)->firstWhere('subject_id', $pairedSubjectId) : null;
+
+                                // Calculate combined totals
+                                $combinedTotalMark = $mark->total_mark;
+                                $combinedHighestMark = $highest_marks[$subjectId] ?? 0;
+
+                                if ($isCombinedPrimary && $pairedMark) {
+                                    $combinedTotalMark += $pairedMark->total_mark;
+                                    $combinedHighestMark += $highest_marks[$pairedSubjectId] ?? 0;
+                                    $processedPairs[] = $pairedSubjectId;
+                                }
+
+                                // Add to totals (always add all marks)
                                 $totalCt += $mark->ct_mark;
                                 $totalCq += $mark->cq_mark;
                                 $totalMcq += $mark->mcq_mark;
                                 $totalPrac += $mark->practical_mark;
                                 $totalObtained += $mark->obtained_mark;
-                                $totalHighest += $highest_marks[$mark->subject_id] ?? 0;
+                                $totalHighest += $highest_marks[$subjectId] ?? 0;
+
+                                if ($isCombinedPrimary && $pairedMark) {
+                                    $totalCt += $pairedMark->ct_mark;
+                                    $totalCq += $pairedMark->cq_mark;
+                                    $totalMcq += $pairedMark->mcq_mark;
+                                    $totalPrac += $pairedMark->practical_mark;
+                                    $totalObtained += $pairedMark->obtained_mark;
+                                    $totalHighest += $highest_marks[$pairedSubjectId] ?? 0;
+                                }
+
+                                //  if ($mark->fourth_subject == 1 &&
+                                //     isset($detail->fourth_marks) &&
+                                //     $mark->subject_id == $detail->fourth_marks->subject->id) {
+                                //     continue;
+                                // }
                             @endphp
 
-                            @if ($mark->fourth_subject == 1)
+                            {{-- @if ($mark->fourth_subject == 1)
                                 @php continue; @endphp
-                            @endif
+                            @endif --}}
 
                             <tr>
                                 <td style="width:133px; text-align:left; padding-left: 10px;">
                                     {{ $mark->subject->name_en ?? '' }}
                                 </td>
-                                <td style="width:40px; text-align:center;">{{ number_format($mark->cq_mark, 0) }}</td>
                                 <td style="width:40px; text-align:center;">{{ number_format($mark->ct_mark, 0) }}</td>
+                                <td style="width:40px; text-align:center;">{{ number_format($mark->cq_mark, 0) }}</td>
                                 <td style="width:40px; text-align:center;">{{ number_format($mark->mcq_mark, 0) }}</td>
-                                <td style="width:40px; text-align:center;">
-                                    {{ number_format($mark->practical_mark, 0) }}
-                                </td>
-                                <td style="width:40px; text-align:center;">{{ number_format($mark->obtained_mark, 0) }}
+                                <td style="width:40px; text-align:center;">{{ number_format($mark->practical_mark, 0) }}</td>
+                                <td style="width:40px; text-align:center;">{{ number_format($mark->obtained_mark, 0) }}</td>
                                 <td style="width:40px; text-align:center;">
                                     @if (!$mark->combined_result_marks_id)
                                         @if ($mark->combined_mark)
-                                            <div class="combined_marks">
-                                                {{ number_format($mark->combined_mark * 2, 0) }}
-                                            </div>
+                                            <div class="combined_marks">{{ number_format($mark->combined_mark * 2, 0) }}</div>
                                         @else
-                                            {{ number_format($mark->total_mark, 0) }}
+                                            @if($isCombinedPrimary && $pairedMark)
+                                                {{ number_format($combinedTotalMark, 0) }}
+                                            @elseif($isCombinedSecondary)
+                                                {{-- Empty for secondary subjects --}}
+                                            @else
+                                                {{ number_format($mark->total_mark, 0) }}
+                                            @endif
                                         @endif
                                     @endif
                                 </td>
                                 <td style="width:40px; text-align:center;">
-                                    {{ number_format($highest_marks[$mark->subject_id] ?? 0, 0) }}
+                                    @if($isCombinedPrimary && $pairedMark)
+                                        {{ number_format($combinedHighestMark, 0) }}
+                                    @elseif($isCombinedSecondary)
+                                        {{-- Empty for secondary subjects --}}
+                                    @else
+                                        {{ number_format($highest_marks[$subjectId] ?? 0, 0) }}
+                                    @endif
                                 </td>
                                 <td style="width:40px; text-align:center;">
                                     @if (!$mark->combined_result_marks_id)
                                         @if ($mark->combined_mark)
                                             <div class="combined_marks">{{ $mark->combined_gpa }}</div>
                                         @else
-                                            {{ $mark->gpa }}
+                                            @if($isCombinedSecondary)
+                                                {{-- Empty for secondary subjects --}}
+                                            @else
+                                                {{ $mark->gpa }}
+                                            @endif
                                         @endif
                                     @endif
                                 </td>
@@ -217,11 +282,33 @@
                                         @if ($mark->combined_letter_grade)
                                             <div class="combined_marks">{{ $mark->combined_letter_grade }}</div>
                                         @else
-                                            {{ $mark->letter_grade }}
+                                            @if($isCombinedSecondary)
+                                                {{-- Empty for secondary subjects --}}
+                                            @else
+                                                {{ $mark->letter_grade }}
+                                            @endif
                                         @endif
                                     @endif
                                 </td>
                             </tr>
+
+                            {{-- Show paired subject if exists --}}
+                            @if($isCombinedPrimary && $pairedMark)
+                                <tr>
+                                    <td style="width:133px; text-align:left; padding-left: 10px;">
+                                        {{ $pairedMark->subject->name_en ?? '' }}
+                                    </td>
+                                    <td style="width:40px; text-align:center;">{{ number_format($pairedMark->ct_mark, 0) }}</td>
+                                    <td style="width:40px; text-align:center;">{{ number_format($pairedMark->cq_mark, 0) }}</td>
+                                    <td style="width:40px; text-align:center;">{{ number_format($pairedMark->mcq_mark, 0) }}</td>
+                                    <td style="width:40px; text-align:center;">{{ number_format($pairedMark->practical_mark, 0) }}</td>
+                                    <td style="width:40px; text-align:center;">{{ number_format($pairedMark->obtained_mark, 0) }}</td>
+                                    <td style="width:40px; text-align:center;"></td>
+                                    <td style="width:40px; text-align:center;"></td>
+                                    <td style="width:40px; text-align:center;"></td>
+                                    <td style="width:40px; text-align:center;"></td>
+                                </tr>
+                            @endif
                         @endforeach
                     </tbody>
                 </table>
@@ -233,10 +320,10 @@
                     <tr style="font-weight: bold;">
                         <td style="width:133px; padding-left: 10px;"></td>
                         <td style="width:41px; text-align:center; font-size: 14px;">
-                            {{ $totalCq > 0 ? number_format($totalCq, 0) : '' }}
+                            {{ $totalCt > 0 ? number_format($totalCt, 0) : '' }}
                         </td>
                         <td style="width:41px; text-align:center; font-size: 14px;">
-                            {{ $totalCt > 0 ? number_format($totalCt, 0) : '' }}
+                            {{ $totalCq > 0 ? number_format($totalCq, 0) : '' }}
                         </td>
                         <td style="width:41px; text-align:center; font-size: 14px;">
                             {{ $totalMcq > 0 ? number_format($totalMcq, 0) : '' }}
@@ -267,9 +354,9 @@
                                 {{ $detail->fourth_marks->subject->name_en ?? '' }}
                             </td>
                             <td style="width:40px; text-align:center;">
-                                {{ number_format($detail->fourth_marks->cq_mark, 0) }}</td>
-                            <td style="width:40px; text-align:center;">
                                 {{ number_format($detail->fourth_marks->ct_mark, 0) }}</td>
+                            <td style="width:40px; text-align:center;">
+                                {{ number_format($detail->fourth_marks->cq_mark, 0) }}</td>
                             <td style="width:40px; text-align:center;">
                                 {{ number_format($detail->fourth_marks->mcq_mark, 0) }}</td>
                             <td style="width:40px; text-align:center;">

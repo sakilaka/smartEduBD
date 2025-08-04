@@ -7,6 +7,7 @@ import frontendRoutes from './admin/frontendRoutes';
 import masterSetupRoutes from './admin/masterSetupRoutes';
 import primaryResultRoutes from './admin/primaryResultRoutes';
 import secondaryResultRoutes from './admin/secondaryResultRoutes';
+import higherSecondaryResultRoute from './admin/higherSecondaryResultRoute';
 import studentRoutes from './admin/studentRoutes';
 import paymentRoutes from './admin/paymentRoutes';
 import systemsRoutes from './admin/systemsRoutes';
@@ -19,6 +20,7 @@ const routes = [
             ...masterSetupRoutes,
             ...primaryResultRoutes,
             ...secondaryResultRoutes,
+            ...higherSecondaryResultRoute,
             ...studentRoutes,
             ...paymentRoutes,
             ...systemsRoutes,

@@ -10,7 +10,7 @@ Route::post('login', 'Guardian\Auth\LoginController@login');
 // Route::post('forgot-password', 'StudentController@passwordChange');
 
 Route::get('initial-data', 'LibController@index');
-// Route::get('content', 'HomeController@content');
+Route::get('content', 'HomeController@content');
 Route::get('notices', 'HomeController@notices')->middleware('auth:guardianApi');
 
 /** logged user can acces this routes **/

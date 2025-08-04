@@ -20,6 +20,7 @@ use App\Models\MasterSetup\Section;
 use Laravel\Sanctum\HasApiTokens;
 use App\Models\MasterSetup\Institution;
 use App\Models\MasterSetup\Medium;
+use App\Models\Result\SecondarySubjectAssign;
 use Illuminate\Support\Facades\Auth;
 
 class Student extends Authenticatable
@@ -145,11 +146,6 @@ class Student extends Authenticatable
             ->whereColumn('academic_class_id', 'academic_class_id');
     }
 
-    /**
-     * where conditions
-     *
-     * @var array
-     */
     public static function commonArr($req)
     {
         return [
@@ -187,5 +183,17 @@ class Student extends Authenticatable
         $sid   = $this->software_id ?? "";
 
         return "{$name} - {$eventName} this (ID - {$id}) - Software ID -({$sid})";
+    }
+
+    public function subjects()
+    {
+        return $this->hasMany(SecondarySubjectAssign::class, 'student_id')
+            ->oldest('secondary_subject_assigns.id')
+            ->join('students', function ($join) {
+                $join->on('students.group_id', '=', 'secondary_subject_assigns.group_id')
+                    ->on('students.academic_class_id', '=', 'secondary_subject_assigns.academic_class_id')
+                    ->on('students.id', '=', 'secondary_subject_assigns.student_id');
+            })
+            ->select('secondary_subject_assigns.*');
     }
 }

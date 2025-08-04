@@ -67,6 +67,7 @@ const tableColumns = [
   { field: "institution.name", title: "institution Name" },
   { field: "medium.name", title: "Medium/Version" },
   { field: "academic_class.name", title: "Academic Class" },
+  { field: "academic_group.name", title: "Group" },
 ];
 //json fields for export excel
 const json_fields = {

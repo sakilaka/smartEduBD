@@ -1,51 +1,33 @@
 <template>
-  <form
-    v-if="!$root.spinner"
-    v-on:submit.prevent="submit"
-    id="form"
-    class="row"
-    enctype="multipart/form-data"
-  >
-    <div class="col-xl-9">
-      <div class="card border">
-        <div class="card-body p-3">
-          <div class="row g-3">
-            <!------------ Single Input ------------>
-            <div class="col-6">
-              <Label
-                title="Excel File Upload"
-                :req="true"
-                :condition="validation.hasError('data.excel_file')"
-                :msg="validation.firstError('data.excel_file')"
-              />
-              <b-form-file
-                v-model="data.excel_file"
-                id="file-small file"
-                size="sm"
-                name="excel_file"
-                drop-placeholder="Drop file here"
-                :class="reqClass('excel_file')"
-                accept=".csv"
-              ></b-form-file>
+    <form v-if="!$root.spinner" v-on:submit.prevent="submit" id="form" class="row" enctype="multipart/form-data">
+        <div class="col-xl-9">
+            <div class="card border">
+                <div class="card-body p-3">
+                    <div class="row g-3">
+                        <!------------ Single Input ------------>
+                        <div class="col-6">
+                            <Label title="Excel File Upload" :req="true"
+                                :condition="validation.hasError('data.excel_file')"
+                                :msg="validation.firstError('data.excel_file')" />
+                            <b-form-file v-model="data.excel_file" id="file-small file" size="sm" name="excel_file"
+                                drop-placeholder="Drop file here" :class="reqClass('excel_file')"
+                                accept=".csv"></b-form-file>
+                        </div>
+                        <div class="col-1 text-center pt-4">
+                            <a :href="sample_file" download="teachers_import.csv" class="btn btn-xs btn-primary">
+                                <i class="bx bx-download" title="Download Sample Excel Format"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="col-1 text-center pt-4">
-              <a :href="sample_file" download="" class="btn btn-xs btn-primary">
-                <i
-                  class="bx bx-download"
-                  title="Download Sample Excel Format"
-                ></i>
-              </a>
-            </div>
-          </div>
         </div>
-      </div>
-    </div>
 
-    <!-- RIGHT SIDE -->
-    <div class="col-xl-3">
-      <ButtonStatus :save_and_edit="false" />
-    </div>
-  </form>
+        <!-- RIGHT SIDE -->
+        <div class="col-xl-3">
+            <ButtonStatus :save_and_edit="false" />
+        </div>
+    </form>
 </template>
 
 <script>
@@ -67,7 +49,7 @@ export default {
   data() {
     return {
       model: model,
-      sample_file: `${this.$root.baseurl}/public/sample_xl/teachers_import.csv`,
+      sample_file: `${this.$root.baseurl}/sample_xl/teachers_import.csv`,
       data: {
         excel_file: null,
       },

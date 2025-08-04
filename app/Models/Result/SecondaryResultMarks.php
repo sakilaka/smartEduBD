@@ -8,6 +8,7 @@ namespace App\Models\Result;
 
 use App\Models\Base\ParentModel;
 use App\Models\MasterSetup\Subject;
+use App\Models\StudentSubjectAssign;
 
 class SecondaryResultMarks extends ParentModel
 {
@@ -47,5 +48,16 @@ class SecondaryResultMarks extends ParentModel
     public function subject()
     {
         return $this->belongsTo(Subject::class)->select('id', 'name_en');
+    }
+
+    public function subjectAssignment()
+    {
+        return $this->belongsTo(StudentSubjectAssign::class, 'subject_id', 'subject_id')
+            ->where('student_id', function ($query) {
+                $query->select('student_id')
+                    ->from('secondary_result_details')
+                    ->whereColumn('secondary_result_details.id', 'secondary_result_marks.secondary_result_details_id');
+            })
+            ->with('student.academic_class'); 
     }
 }

@@ -54,7 +54,7 @@ class InvoiceController extends BaseController
             ->withCount('details')
             ->with(
                 'institution',
-                'student',
+                'student.profile',
                 'academic_session',
                 'campus',
                 'shift',
@@ -149,6 +149,7 @@ class InvoiceController extends BaseController
             'shift',
             'medium',
             'academic_class',
+            'academic_session',
             'group',
             'section',
         )->select(
@@ -158,6 +159,7 @@ class InvoiceController extends BaseController
             'shift_id',
             'medium_id',
             'academic_class_id',
+            'academic_session_id',
             'group_id',
             'section_id',
             'software_id',
@@ -167,10 +169,12 @@ class InvoiceController extends BaseController
         );
 
         $studentQuery->whereAny('institution_id', $institution_id);
+        $studentQuery->whereSub('academic_class', 'institution_category_id', $request->institution_category_id);
         $studentQuery->whereAny('campus_id', $request->campus_id);
         $studentQuery->whereAny('shift_id', $request->shift_id);
         $studentQuery->whereAny('medium_id', $request->medium_id);
         $studentQuery->whereAny('academic_class_id', $request->academic_class_id);
+        $studentQuery->whereAny('academic_session_id', $request->academic_session_id);
         $studentQuery->whereAny('group_id', $request->group_id);
         $studentQuery->whereAny('section_id', $request->section_id);
         $studentQuery->whereLike($request->field_name, $request->value);

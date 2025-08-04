@@ -25,7 +25,7 @@
             <div class="col-4">
               <div>
                 <b>Convert Mark:</b>
-                <input v-model="convert_mark" type="radio" value="1" />
+               <input v-model="convert_mark" type="radio" value="1" />
                 Yes &nbsp; &nbsp;
                 <input v-model="convert_mark" type="radio" value="0" />
                 No
@@ -366,6 +366,7 @@ export default {
         institution_id: this.data.institution_id,
         medium_id: this.data.medium_id,
         academic_class_id: this.data.academic_class_id,
+        academic_group_id: this.data.group_id,
       };
       this.get_data("secondary-classwise-subjects", "subjects", params);
     },
@@ -404,7 +405,7 @@ export default {
       let convertMark = parseFloat(this.subject.converted_mark);
 
       if (parseInt(this.convert_mark)) {
-        obtained = (parseFloat(obtained) / totalExamMark) * convertMark;
+          obtained = (parseFloat(obtained) / totalExamMark) * convertMark;
       }
 
       let total_mark = obtained;

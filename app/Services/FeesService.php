@@ -6,6 +6,7 @@ use App\Models\FeeSetup;
 use App\Models\Invoice;
 use App\Models\Student;
 use App\Models\TuitionFeeGenerate;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class FeesService
@@ -50,8 +51,12 @@ class FeesService
     {
         $duesFees = [];
         $commonConditions = Student::commonArr($student);
+
         $conditions = Student::conditions($student);
         $feeSetup = FeeSetup::where($conditions)->first();
+
+        Log::channel('dev-log')->info('Student: ', $student->toArray());
+        Log::channel('dev-log')->info('Conditions: ', $conditions);
 
         if (!empty($feeSetup->details)) {
             $monthlyID = $feeSetup->details()->where('payment_duration', 'Monthly')->pluck('account_head_id')->toArray();
@@ -100,6 +105,35 @@ class FeesService
      * @param \App\Models\Student $student
      * @return \Illuminate\Http\Response
      */
+    // public function tuitions($student)
+    // {
+    //     $conditions = Student::conditions($student);
+    //     $commonConditions = Student::commonArr($student);
+    //     $tuitionFees = TuitionFeeGenerate::where($conditions)->first();
+    //     throw_unless($tuitionFees, NotFoundHttpException::class, 'Tuition fees not generated.');
+
+    //     $details = $tuitionFees->details()
+    //         ->where('status', 1)
+    //         ->select('id', 'date', 'amount')  // Make sure 'month' is included
+    //         ->get()
+    //         ->map(function ($item) use ($student, $commonConditions) {
+    //             $status = $item->invoice_details()
+    //                 ->whereHas('invoice', function ($subquery) use ($student, $commonConditions) {
+    //                     $subquery->where($commonConditions)->where('student_id', $student->id);
+    //                 })->value('status');
+
+    //             $item['generate_month'] = $status ? true : false;
+    //             $item['checked'] = $status ? true : false;
+    //             $item['status'] = $status ?? 'pending';
+    //             return $item;
+    //         });
+
+    //     return [
+    //         'fees_lists' => $details,
+    //         'class_id' => $student->academic_class_id ?? null,
+    //     ];
+    // }
+
     public function tuitions($student)
     {
         $conditions = Student::conditions($student);
@@ -107,10 +141,9 @@ class FeesService
         $tuitionFees = TuitionFeeGenerate::where($conditions)->first();
         throw_unless($tuitionFees, NotFoundHttpException::class, 'Tuition fees not generated.');
 
-        $details = $tuitionFees->details()
+        return $tuitionFees->details()
             ->where('status', 1)
-            ->select('id', 'date', 'amount')  // Make sure 'month' is included
-            ->get()
+            ->select('id', 'date', 'amount')->get()
             ->map(function ($item) use ($student, $commonConditions) {
                 $status = $item->invoice_details()
                     ->whereHas('invoice', function ($subquery) use ($student, $commonConditions) {
@@ -122,20 +155,9 @@ class FeesService
                 $item['status'] = $status ?? 'pending';
                 return $item;
             });
-
-        return [
-            'fees_lists' => $details,
-            'class_id' => $student->academic_class_id ?? null, // <-- Add this
-        ];
     }
 
 
-    /**
-     * Get tuitions dues fees lists
-     *
-     * @param \App\Models\Student $student
-     * @return \Illuminate\Http\Response
-     */
     public function tuitionDuesFees($student)
     {
         $conditions = Student::conditions($student);

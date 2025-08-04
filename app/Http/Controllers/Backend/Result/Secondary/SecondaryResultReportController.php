@@ -239,7 +239,7 @@ class SecondaryResultReportController extends Controller
     }
 
     /**
-     * Download marksheet 
+     * Download marksheet
      *
      * @param  $id
      * @return \Illuminate\Http\Response
@@ -258,8 +258,8 @@ class SecondaryResultReportController extends Controller
             'result.group',
             'result.section',
             'result.exam',
-            'fourth_marks',
-            'except_fourth_marks',
+            'fourth_marks.subject',
+            'except_fourth_marks.subject',
         )->find($id);
 
         $highest_marks = $this->getHighestMarks($detail->result);
@@ -271,12 +271,6 @@ class SecondaryResultReportController extends Controller
         return $pdf->stream();
     }
 
-    /**
-     * Download bulk marksheet 
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
-     */
     public function downloadBulkMarksheet(Request $request)
     {
         $searchParams = json_decode($request->search_params, true);
@@ -491,6 +485,7 @@ class SecondaryResultReportController extends Controller
             'institution_id'    => $request->institution_id,
             'medium_id'         => $request->medium_id,
             'academic_class_id' => $request->academic_class_id,
+            'academic_group_id' => $request->group_id,
         ])->first();
 
         if (!empty($subjectAssign)) {
@@ -566,7 +561,7 @@ class SecondaryResultReportController extends Controller
     {
         $institution_id = Institution::current() ?? $request->institution_id;
         $cond = [
-            // 'academic_session_id' => $request->academic_session_id,
+            'academic_session_id' => $request->academic_session_id,
             'institution_id' => $institution_id,
             'campus_id' => $request->campus_id,
             'shift_id' => $request->shift_id,

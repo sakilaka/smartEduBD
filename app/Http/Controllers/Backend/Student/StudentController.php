@@ -19,7 +19,10 @@ use Illuminate\Support\Facades\DB;
 use App\Models\Guardian;
 use App\Models\StudentProfile;
 use App\Models\MasterSetup\Institution;
+use App\Models\Result\SecondarySubjectAssign;
 use App\Models\StudentDiscount;
+use App\Models\StudentSubjectAssign;
+use App\Models\TeacherSubjectAssign;
 use App\Traits\ImageUpload;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Str;
@@ -121,22 +124,12 @@ class StudentController extends Controller
         }
     }
 
-    /**
-     * Show the form for creating a new resource.
-     *
-     * @return \Illuminate\Http\Response
-     */
     public function create()
     {
         return view('layouts.backend_app');
     }
 
-    /**
-     * Store a newly created resource in storage.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
-     */
+
     public function store(Request $request)
     {
         if ($this->validateCheck($request)) {
@@ -189,12 +182,7 @@ class StudentController extends Controller
         }
     }
 
-    /**
-     * Display the specified resource.
-     *
-     * @param  \App\Models\Student  $student
-     * @return \Illuminate\Http\Response
-     */
+
     public function show(Request $request, Student $student)
     {
         if ($request->format() == 'html') {
@@ -216,26 +204,16 @@ class StudentController extends Controller
         return $student;
     }
 
-    /**
-     * Show the form for editing the specified resource.
-     *
-     * @param  \App\Models\Student  $student
-     * @return \Illuminate\Http\Response
-     */
+
     public function edit(Student $student)
     {
         return view('layouts.backend_app');
     }
 
-    /**
-     * Update the specified resource in storage.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  \App\Models\Student  $student
-     * @return \Illuminate\Http\Response
-     */
+
     public function update(Request $request, Student $student)
     {
+        // dd($request->all());
         if ($this->validateCheck($request, $student->id)) {
             try {
                 DB::beginTransaction();
@@ -286,12 +264,7 @@ class StudentController extends Controller
         }
     }
 
-    /**
-     * Remove the specified resource from storage.
-     *
-     * @param  \App\Models\Student  $student
-     * @return \Illuminate\Http\Response
-     */
+
     public function destroy(Student $student, Request $request)
     {
         if (!empty($request->bulk_id)) {
@@ -307,11 +280,7 @@ class StudentController extends Controller
         }
     }
 
-    /**
-     * Discount Student
-     *
-     * @return \Illuminate\Http\Response
-     */
+
     public function discount(Request $request)
     {
         try {
@@ -346,11 +315,7 @@ class StudentController extends Controller
         }
     }
 
-    /**
-     * import from excel
-     *
-     * @return \Illuminate\Http\Response
-     */
+
     public function import(Request $request)
     {
         try {
@@ -363,11 +328,6 @@ class StudentController extends Controller
         }
     }
 
-    /**
-     * Validate form field.
-     *
-     * @return \Illuminate\Http\Response
-     */
     public function validateCheck($request, $id = null)
     {
         // return $request->validate([
@@ -512,5 +472,89 @@ class StudentController extends Controller
             ->setPaper('a4', 'landscape');
 
         return $pdf->stream('seat_card.pdf');
+    }
+
+
+
+
+    public function studentSubjectAssignFunction($id)
+    {
+        $data = [];
+        $student = Student::find($id);
+        // dd($student);
+
+        $data['subjectAssign'] = SecondarySubjectAssign::with([
+            'details:secondary_subject_assign_id,subject_id,except_subject_id,fourth_subject,main_subject',
+            'details.subject'
+        ])->where([
+            'institution_id'            => $student->institution_id,
+            'academic_group_id'         => $student->group_id,
+            'academic_class_id'         => $student->academic_class_id,
+        ])->first();
+
+        $data['assign_subjects'] = StudentSubjectAssign::with('subject')
+            ->where([
+                'group_id' => $student->group_id,
+                'academic_class_id' => $student->academic_class_id,
+                'student_id' => $student->id,
+            ])->get();
+
+        return response()->json($data);
+    }
+
+    public function classWiseSubject(Request $request)
+    {
+        $department_id = $request->department_id ?? auth()->guard('admin')->user()->department_id;
+        $subjectID = [];
+        $subjects = [];
+        $subjectAssign = SecondarySubjectAssign::where([
+            // 'academic_qualification_id' => $request->academic_qualification_id,
+            'department_id'             => $department_id,
+            'academic_class_id'         => $request->academic_class_id,
+        ])->first();
+
+        if (auth()->user()->type == 'Teacher') {
+            $subjectID = TeacherSubjectAssign::getAssignId('subject_id', $request->all());
+        }
+
+        if (!empty($subjectAssign)) {
+            if (auth()->user()->type == 'Teacher') {
+                $subjects = $subjectAssign->details()->whereIn('subject_id', $subjectID)->with('subject')->get();
+            } else {
+                $subjects = $subjectAssign->details()->with('subject')->get();
+            }
+        }
+
+        return response()->json($subjects);
+    }
+
+    public function storeSubjectAssign(Request $request)
+    {
+        try {
+            $student = Student::find($request->student_id);
+
+            // delete existing subjects
+            StudentSubjectAssign::where([
+                'group_id' => $student->group_id,
+                'academic_class_id' => $student->academic_class_id,
+                'student_id' => $student->id,
+            ])->delete();
+
+            // store subjects
+            $inputs = $request->data;
+            foreach ($inputs as $key => $subject) {
+                $data = [
+                    'group_id' => $student->group_id,
+                    'academic_class_id' => $student->academic_class_id,
+                    'student_id' => $student->id,
+                    'subject_id' => $subject['subject_id'],
+                    'main_subject' => $subject['main_subject']
+                ];
+                StudentSubjectAssign::create($data);
+            }
+            return response()->json(['message' => "Subject Assign Successfully"], 200);
+        } catch (\Exception $ex) {
+            return response()->json(['exception' => $ex->errorInfo ?? $ex->getMessage()], 422);
+        }
     }
 }

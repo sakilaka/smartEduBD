@@ -32,11 +32,7 @@ class ResultController extends Controller
         return $this->sendResponse($data);
     }
 
-    /**
-     * Search results
-     *
-     * @return \Illuminate\Http\Response
-     */
+ 
     public function result(Request $request)
     {
         $student_id = auth()->user()->current_student->id ?? '';
@@ -63,7 +59,7 @@ class ResultController extends Controller
     }
 
     /**
-     * Download marksheet 
+     * Download marksheet
      *
      * @param  $id
      * @param  \Illuminate\Http\Request  $request

@@ -41,7 +41,7 @@ const app = new Vue({
                 this.global = res.data.global;
                 this.permissions = res.data.permissions;
                 profile.dispatch("setProfile", res.data.profile);
-                console.log(this.global);
+                // console.log(this.global);
 
             }).catch(err => console.log(err));
         },

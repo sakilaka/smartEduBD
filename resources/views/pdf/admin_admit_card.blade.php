@@ -60,7 +60,7 @@
         /* Student information fields - adjust these positions as needed */
         .exam_name{
             position: absolute;
-            left: 180px;
+            left: 190px;
             top: 92px;
             font-size: 18px;
         }

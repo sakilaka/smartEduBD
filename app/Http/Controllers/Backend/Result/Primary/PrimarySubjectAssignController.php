@@ -12,6 +12,7 @@ use App\Http\Resources\Resource;
 use App\Models\MasterSetup\Institution;
 use App\Models\Result\PrimarySubjectAssign;
 use App\Models\Result\PrimarySubjectAssignDetails;
+use App\Models\TeacherSubjectAssign;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -180,14 +181,34 @@ class PrimarySubjectAssignController extends Controller
     public function subjectLists(Request $request)
     {
         $subjects = [];
+
+        // Step 1: Check for subject assignment based on institution/class/medium
         $subjectAssign = PrimarySubjectAssign::where([
             'institution_id'    => $request->institution_id,
             'medium_id'         => $request->medium_id,
             'academic_class_id' => $request->academic_class_id,
         ])->first();
 
+        // Step 2: If assignment exists
         if (!empty($subjectAssign)) {
-            $subjects = $subjectAssign->details()->with('subject')->get();
+            // Base subjects from assignment
+            $assignedSubjectDetails = $subjectAssign->details()->with('subject')->get();
+
+            // Step 3: Check if the logged-in user is a teacher
+            $authAdminId = auth()->id();
+            $teacherSubjectIds = TeacherSubjectAssign::where('admin_id', $authAdminId)
+                ->pluck('subject_id')
+                ->toArray();
+
+            // Step 4: Filter based on teacher subject_ids, if any found
+            if (!empty($teacherSubjectIds)) {
+                $assignedSubjectDetails = $assignedSubjectDetails->filter(function ($item) use ($teacherSubjectIds) {
+                    return in_array($item->subject_id, $teacherSubjectIds);
+                })->values(); // reset keys
+            }
+
+            // Set subjects
+            $subjects = $assignedSubjectDetails;
         }
 
         return response()->json($subjects);

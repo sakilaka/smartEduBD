@@ -18,20 +18,31 @@ class Admin extends Authenticatable
     protected $fillable = [
         'institution_id',
         'role_id',
-        'type',
         'name',
+        'father_name',
         'email',
         'password',
         'role_id',
         'profile',
         'mobile',
         'address',
-        'status'
+        'status',
+        'type'
     ];
 
     protected $hidden = [
-        'password', 'remember_token',
+        'password',
+        'remember_token',
     ];
+    public function teacher()
+    {
+        return $this->hasOne(Teacher::class, 'admin_id');
+    }
+
+    function subject_assigns()
+    {
+        return $this->hasMany(TeacherSubjectAssign::class, 'admin_id');
+    }
 
     public function role()
     {
@@ -40,15 +51,6 @@ class Admin extends Authenticatable
     public function institution()
     {
         return $this->belongsTo(Institution::class)->select('id', 'name', 'logo');
-    }
-     public function teacher()
-    {
-        return $this->hasOne(Teacher::class, 'admin_id');
-    }
-
-    function subject_assigns()
-    {
-        return $this->hasMany(TeacherSubjectAssign::class, 'admin_id');
     }
 
     public function getProfileAttribute($value)

@@ -12,6 +12,7 @@ use App\Models\Result\SecondaryResultDetails;
 use App\Models\Result\SecondaryResultMarks;
 use App\Models\Result\SecondarySubjectAssign;
 use App\Models\Student;
+use App\Models\StudentSubjectAssign;
 
 trait ResultTrait
 {
@@ -92,18 +93,23 @@ trait ResultTrait
         return $details;
     }
 
-    /**
-     * Result marks sync
-     */
     protected function resultMarksSync($result, $convert)
     {
         $gradeRanges = SecondaryGradeManagement::all();
+        $isSpecialClass = in_array($result->academic_class_id, [8, 9, 10]);
 
         $subjectAssign = SecondarySubjectAssign::with('details')->where([
             'institution_id'    => $result->institution_id,
             'medium_id'         => $result->medium_id,
             'academic_class_id' => $result->academic_class_id,
+            'academic_group_id' => $result->group_id,
         ])->first();
+
+
+        if (!$subjectAssign || !$subjectAssign->details) {
+            return false;
+        }
+
         $subjectMarks = $subjectAssign->details->keyBy('subject_id');
         $subject_sortings = $subjectAssign->details->pluck('sorting', 'subject_id')->toArray();
 
@@ -118,44 +124,257 @@ trait ResultTrait
 
         $marksArr = [];
         foreach ($resultDetails ?? [] as $detail) {
-            foreach ($detail->marks ?? [] as $marks) {
-                if (isset($resultMarks[$marks->id])) {
-                    $markObj = $resultMarks->get($marks->id);
-                    $subject_mark = $subjectMarks->get($markObj->subject_id);
+            $combinedMarks = [];
 
-                    $combined_marks = [];
-                    if ($subject_mark->combined_subject_id) {
-                        $combined_marks = $detail->marks->firstWhere('subject_id', $subject_mark->combined_subject_id);
+            foreach ($detail->marks ?? [] as $marks) {
+                $subjectId = $marks->subject_id;
+
+                if (in_array($subjectId, [20, 21])) {
+                    $groupKey = '20_21';
+                } elseif (in_array($subjectId, [22, 23])) {
+                    $groupKey = '22_23';
+                } else {
+                    $groupKey = $subjectId;
+                }
+
+                if (!isset($combinedMarks[$groupKey])) {
+                    $combinedMarks[$groupKey] = [];
+                }
+                $combinedMarks[$groupKey][] = $marks;
+            }
+
+
+            // Process each group
+            foreach ($combinedMarks as $groupKey => $marksInGroup) {
+                if (in_array($groupKey, ['20_21', '22_23']) && $isSpecialClass) {
+                    // Special processing for combined subjects in classes 8,9,10
+                    $totalObtained = 0;
+                    $totalPossible = 0;
+                    $markObjects = [];
+                    $subjectMarkObjects = [];
+
+                    foreach ($marksInGroup as $marks) {
+                        $markObj = $resultMarks->get($marks->id);
+                        $subject_mark = $subjectMarks->get($markObj->subject_id) ?? null;
+
+                        if (!$markObj || !$subject_mark) {
+                            continue;
+                        }
+
+                        $markObjects[] = $markObj;
+                        $subjectMarkObjects[] = $subject_mark;
+
+                        // Calculate obtained marks for this subject
+                        $obtained = $markObj->cq_mark + $markObj->mcq_mark + $markObj->practical_mark;
+                        $totalExamMark = $subject_mark->cq_mark + $subject_mark->mcq_mark + $subject_mark->practical_mark;
+
+                        if ($convert) {
+                            $convertMark = (int) ($subject_mark->converted_mark ?? 0);
+                            $obtained = ($totalExamMark > 0) ? ($obtained / $totalExamMark) * $convertMark : 0;
+                        }
+
+                        $totalObtained += $obtained + $markObj->ct_mark;
+                        $totalPossible += $subject_mark->cq_mark + $subject_mark->mcq_mark + $subject_mark->practical_mark + $subject_mark->ct_mark;
                     }
 
-                    $marksArr[] = $this->resultMarksGradeGpaCalculate(
-                        $markObj,
-                        $subject_mark,
-                        $subject_sortings,
-                        $combined_marks,
-                        $gradeRanges,
-                        $convert
-                    );
+                    // Convert 150 marks to 100 scale for classes 8,9,10
+                    $convertedPercentage = ($totalObtained / 150) * 100;
+
+                    // Get grade based on converted percentage
+                    $gradeGpa = $gradeRanges->first(fn($range) => $convertedPercentage >= $range->from_mark && $convertedPercentage <= $range->to_mark) ?? [
+                        'gpa' => 0,
+                        'grade' => 'F'
+                    ];
+
+                    // Update all marks in the group with the same grade
+                    foreach ($markObjects as $index => $markObj) {
+                        $subject_mark = $subjectMarkObjects[$index] ?? null;
+                        $combined_marks = ($subject_mark && $subject_mark->combined_subject_id)
+                            ? $detail->marks->firstWhere('subject_id', $subject_mark->combined_subject_id)
+                            : null;
+
+                        // Calculate obtained and total marks
+                        $obtained = $markObj->cq_mark + $markObj->mcq_mark + $markObj->practical_mark;
+                        $totalMark = $obtained + $markObj->ct_mark;
+
+                        $marksArr[] = [
+                            'id' => $markObj->id,
+                            'combined_result_marks_id' => $combined_marks ? ($combined_marks->id ?? null) : null,
+                            'obtained_mark' => round($obtained),
+                            'total_mark' => round($totalMark),
+                            'gpa' => $gradeGpa['gpa'] ?? '',
+                            'letter_grade' => $gradeGpa['grade'] ?? '',
+                            'fourth_subject' => ($subject_mark && $subject_mark->fourth_subject && $subject_mark->subject_id == $markObj->subject_id) ? 1 : 0,
+                            'sorting' => $subject_sortings[$markObj->subject_id] ?? 0,
+                            'ct_mark' => $markObj->ct_mark,
+                            'cq_mark' => $markObj->cq_mark,
+                        ];
+                    }
+                } elseif (in_array($groupKey, ['20_21', '22_23'])) {
+                    // Combined subjects processing for other classes (not 8,9,10)
+                    $totalObtained = 0;
+                    $totalPossible = 0;
+                    $markObjects = [];
+                    $subjectMarkObjects = [];
+
+                    // Special case for subject pair 20 and 21
+                    $isSpecialCase = in_array($groupKey, ['20_21']);
+                    $totalCQ = 0;
+                    $totalMCQ = 0;
+
+                    foreach ($marksInGroup as $marks) {
+                        $markObj = $resultMarks->get($marks->id);
+                        $subject_mark = $subjectMarks->get($markObj->subject_id) ?? null;
+
+                        if (!$markObj || !$subject_mark) {
+                            continue;
+                        }
+
+                        $markObjects[] = $markObj;
+                        $subjectMarkObjects[] = $subject_mark;
+
+                        // For special case subjects, collect CQ and MCQ marks
+                        if ($isSpecialCase) {
+                            $totalCQ += $markObj->cq_mark;
+                            $totalMCQ += $markObj->mcq_mark;
+                        }
+
+                        // Calculate obtained marks for this subject
+                        $obtained = $markObj->cq_mark + $markObj->mcq_mark + $markObj->practical_mark;
+                        $totalExamMark = $subject_mark->cq_mark + $subject_mark->mcq_mark + $subject_mark->practical_mark;
+
+                        if ($convert) {
+                            $convertMark = (int) ($subject_mark->converted_mark ?? 0);
+                            $obtained = ($totalExamMark > 0) ? ($obtained / $totalExamMark) * $convertMark : 0;
+                        }
+
+                        $totalObtained += $obtained + $markObj->ct_mark;
+                        $totalPossible += $subject_mark->cq_mark + $subject_mark->mcq_mark + $subject_mark->practical_mark + $subject_mark->ct_mark;
+                    }
+
+                    // Check special conditions for subjects 20 and 21
+                    $failedSpecialCondition = false;
+                    if ($isSpecialCase) {
+                        $failedSpecialCondition = ($totalCQ < 46) || ($totalMCQ < 20);
+                    }
+
+                    // Calculate average percentage if not failed by special condition
+                    if (!$failedSpecialCondition) {
+                        $averagePercentage = ($totalPossible > 0) ? ($totalObtained / $totalPossible) * 100 : 0;
+                        $gradeGpa = $gradeRanges->first(fn($range) => $averagePercentage >= $range->from_mark && $averagePercentage <= $range->to_mark) ?? [
+                            'gpa' => 0,
+                            'grade' => 'F'
+                        ];
+                    } else {
+                        // Failed by special condition
+                        $gradeGpa = [
+                            'gpa' => 0,
+                            'grade' => 'F'
+                        ];
+                    }
+
+                    // Update all marks in the group with the same grade
+                    foreach ($markObjects as $index => $markObj) {
+                        $subject_mark = $subjectMarkObjects[$index] ?? null;
+                        $combined_marks = ($subject_mark && $subject_mark->combined_subject_id)
+                            ? $detail->marks->firstWhere('subject_id', $subject_mark->combined_subject_id)
+                            : null;
+
+                        // Calculate obtained and total marks
+                        $obtained = $markObj->cq_mark + $markObj->mcq_mark + $markObj->practical_mark;
+                        $totalMark = $obtained + $markObj->ct_mark;
+
+                        $marksArr[] = [
+                            'id' => $markObj->id,
+                            'combined_result_marks_id' => $combined_marks ? ($combined_marks->id ?? null) : null,
+                            'obtained_mark' => round($obtained),
+                            'total_mark' => round($totalMark),
+                            'gpa' => $gradeGpa['gpa'] ?? '',
+                            'letter_grade' => $gradeGpa['grade'] ?? '',
+                            'fourth_subject' => ($subject_mark && $subject_mark->fourth_subject && $subject_mark->subject_id == $markObj->subject_id) ? 1 : 0,
+                            'sorting' => $subject_sortings[$markObj->subject_id] ?? 0,
+                            'ct_mark' => $markObj->ct_mark,
+                            'cq_mark' => $markObj->cq_mark,
+                        ];
+                    }
+                } else {
+                    // Regular subject processing
+                    foreach ($marksInGroup as $marks) {
+                        if (isset($resultMarks[$marks->id])) {
+                            $markObj = $resultMarks->get($marks->id);
+                            $subject_mark = $subjectMarks->get($markObj->subject_id) ?? null;
+
+                            if (!$subject_mark) {
+                                continue;
+                            }
+
+                            $combined_marks = null;
+                            if ($subject_mark->combined_subject_id ?? false) {
+                                $combined_marks = $detail->marks->firstWhere('subject_id', $subject_mark->combined_subject_id);
+                            }
+
+                            // Calculate obtained and total marks
+                            $obtained = $markObj->cq_mark + $markObj->mcq_mark + $markObj->practical_mark;
+                            $originalTotalMark = $obtained + $markObj->ct_mark;
+                            $totalMarkForGrading = $originalTotalMark;
+
+                            // First condition: For subject_id 24, 39, 28, or 29, multiply by 2 for grading only
+                            if ($markObj->subject_id == 24 || $markObj->subject_id == 39 || $markObj->subject_id == 28 || $markObj->subject_id == 29) {
+                                $totalMarkForGrading = $originalTotalMark * 2;
+                            }
+
+                            // Second condition: For subject_id 28 or 29, check if class is 8,9,10
+                            if (($markObj->subject_id == 28 || $markObj->subject_id == 29) && $isSpecialClass) {
+                                $totalMarkForGrading = $originalTotalMark * 2;
+                            } elseif ($markObj->subject_id == 28 || $markObj->subject_id == 29) {
+                                // For other classes, use original mark for grading
+                                $totalMarkForGrading = $originalTotalMark;
+                            }
+
+                            // Get grade based on totalMarkForGrading
+                            $gradeGpa = $gradeRanges->first(
+                                fn($range) =>
+                                $totalMarkForGrading >= $range->from_mark && $totalMarkForGrading <= $range->to_mark
+                            ) ?? ['gpa' => 0, 'grade' => 'F'];
+
+                            $marksArr[] = [
+                                'id' => $markObj->id,
+                                'combined_result_marks_id' => $combined_marks ? ($combined_marks->id ?? null) : null,
+                                'obtained_mark' => round($obtained),
+                                'total_mark' => round($originalTotalMark), // Always save original total mark
+                                'gpa' => $gradeGpa['gpa'] ?? 0,
+                                'letter_grade' => $gradeGpa['grade'] ?? 'F',
+                                'fourth_subject' => ($subject_mark->fourth_subject && $subject_mark->subject_id == $markObj->subject_id) ? 1 : 0,
+                                'sorting' => $subject_sortings[$markObj->subject_id] ?? 0,
+                                'ct_mark' => $markObj->ct_mark,
+                                'cq_mark' => $markObj->cq_mark,
+                            ];
+                        }
+                    }
                 }
             }
         }
 
-        // marks updated
+        // Save all updated marks
         SecondaryResultMarks::upsert(
             $marksArr,
             ['id'],
             [
-                'fourth_subject', 'sorting', 'combined_result_marks_id',
-                'obtained_mark', 'total_mark', 'gpa', 'letter_grade', 'ct_mark', 'cq_mark',
+                'fourth_subject',
+                'sorting',
+                'combined_result_marks_id',
+                'obtained_mark',
+                'total_mark',
+                'gpa',
+                'letter_grade',
+                'ct_mark',
+                'cq_mark',
             ]
-        ); ########### 'ct_mark', 'cq_mark' removed when this 2024 result is published
+        );
 
         return true;
     }
 
-    /**
-     * Result marks grade calculate
-     */
     private function resultMarksGradeGpaCalculate($markObj, $subjectMarks, $subject_sortings, $combined_marks, $gradeRanges, $convert = false)
     {
         $gradeGpa = [
@@ -210,7 +429,7 @@ trait ResultTrait
             $obtained = $totalMark;
         }
         // Determine grade
-        $gradeGpa = $gradeRanges->first(fn ($range) => $totalMark >= $range->from_mark && $totalMark <= $range->to_mark) ?? $gradeGpa;
+        $gradeGpa = $gradeRanges->first(fn($range) => $totalMark >= $range->from_mark && $totalMark <= $range->to_mark) ?? $gradeGpa;
 
 
         ########### its removed when this 2024 result is published
@@ -258,6 +477,7 @@ trait ResultTrait
             'institution_id'    => $result->institution_id,
             'medium_id'         => $result->medium_id,
             'academic_class_id' => $result->academic_class_id,
+            'academic_group_id' => $result->group_id,
         ])->first();
 
         $gradeRanges = SecondaryGradeManagement::all();
@@ -271,13 +491,16 @@ trait ResultTrait
 
         $detailsToUpsert = [];
         $marksToUpsert = [];
+
         foreach ($students as $student) {
             $resultDetail = $resultDetails->get($student->id) ?? null;
+
             if ($resultDetail) {
                 foreach ($resultDetail->marks ?? [] as $marks) {
+                    // calculate for combined subject
                     if ($marks->combined_subject) {
                         $combined_mark = ($marks->total_mark + $marks->combined_subject->total_mark) / 200 * 100;
-                        $gradeManagement = $gradeRanges->first(fn ($range) => $combined_mark >= $range->from_mark && $combined_mark <= $range->to_mark) ?? [];
+                        $gradeManagement = $gradeRanges->first(fn($range) => $combined_mark >= $range->from_mark && $combined_mark <= $range->to_mark) ?? [];
 
                         $marksToUpsert[] = [
                             'id' => $marks->id,
@@ -296,7 +519,14 @@ trait ResultTrait
             SecondaryResultDetails::upsert(
                 $detailsToUpsert,
                 ['id'],
-                ['total_mark', 'result_status', 'letter_grade', 'gpa', 'total_mark_without_additional', 'gpa_without_additional']
+                [
+                    'total_mark',
+                    'result_status',
+                    'letter_grade',
+                    'gpa',
+                    'total_mark_without_additional',
+                    'gpa_without_additional'
+                ]
             );
         }
 
@@ -332,6 +562,10 @@ trait ResultTrait
         }
 
         $exceptFourthMarks = $resultDetails->except_fourth_marks;
+        $filteredExceptMarks = $exceptFourthMarks->filter(function ($mark) {
+            return !in_array($mark->subject_id, [21, 23]);
+        });
+
         $totalMarkSubject = $exceptFourthMarks->count('subject_id');
         $totalAssignSubject = $subjectAssign->details->where('fourth_subject', '!=', 1)->count();
 
@@ -339,10 +573,11 @@ trait ResultTrait
         $additSubject = $resultDetails->fourth_marks;
         $addtTotalMark = $additSubject->total_mark ?? 0;
         $totalMark = $marks->sum('total_mark');
+
         $totalMarkWithoutAdditional = $totalMark - $addtTotalMark;
 
-        $totalGpa = $exceptFourthMarks->sum('gpa');
-        $totalSubject = $totalMarkSubject;
+        $totalGpa = $filteredExceptMarks->sum('gpa');
+        $totalSubject = $totalMarkSubject - 2;
 
         $resultDetailsArr['total_mark'] = $totalMark;
         $resultDetailsArr['total_mark_without_additional'] = $totalMarkWithoutAdditional;
@@ -350,7 +585,8 @@ trait ResultTrait
         // Check for failures or incomplete results
         $hasFailed = $exceptFourthMarks->where('letter_grade', 'F')->count();
         $hasBlankLG = $exceptFourthMarks->where('letter_grade', null)->count();
-        if ($hasFailed > 0 || $hasBlankLG > 0 || $totalMarkSubject < $totalAssignSubject) {
+
+        if ($hasFailed > 0 || $hasBlankLG > 0 /* || $totalMarkSubject < $totalAssignSubject */) {
             return $resultDetailsArr;
         }
 
@@ -366,7 +602,7 @@ trait ResultTrait
             $gpa = $totalSubject > 0 ? ($totalGpa + $gpaAdjustment) / $totalSubject : 0;
             $gpa = min($gpa, 5);
         }
-        $gradeManagement = $gradeRanges->first(fn ($range) => $gpa >= $range->from_gpa && $gpa <= $range->to_gpa) ?? [];
+        $gradeManagement = $gradeRanges->first(fn($range) => $gpa >= $range->from_gpa && $gpa <= $range->to_gpa) ?? [];
 
         return [
             'id'            => $resultDetails->id,
@@ -450,7 +686,7 @@ trait ResultTrait
     private function meritPositionSync($result, $type = 'merit_position_in_shift')
     {
         $query = SecondaryResultDetails::query()
-            ->select('rd.id', 'rd.total_mark', 'rd.student_id')
+            ->select('rd.id', 'rd.total_mark', 'rd.gpa', 'rd.student_id', 'rd.result_status', $type)
             ->from('secondary_result_details as rd')
             ->join('secondary_results as res', 'res.id', 'rd.secondary_result_id')
             ->join('students as std', 'rd.student_id', '=', 'std.id')
@@ -461,8 +697,7 @@ trait ResultTrait
             ->where('res.exam_id', $result->exam_id)
             ->where('res.medium_id', $result->medium_id)
             ->where('res.group_id', $result->group_id)
-            ->where('rd.result_status', 'PASSED')
-            ->orderBy('rd.gpa', 'desc')
+            // ->orderBy('rd.gpa', 'desc')
             ->orderBy('rd.total_mark_without_additional', 'desc')
             ->orderBy('profile.roll_number', 'asc');
 
@@ -485,12 +720,19 @@ trait ResultTrait
         // Bulk update merit positions to null
         SecondaryResultDetails::whereIn('id', $ids)->update([$type => null]);
 
+        // Re-sort based on total_marks (desc)
+        $sorted_result_details = $result_details
+            ->where('result_status', 'PASSED')
+            ->sortByDesc(function ($item) {
+                return [(float) $item->gpa, (float) $item->total_mark];
+            })->values();
         // Prepare data for bulk update of merit positions
         $updateData = [];
-        foreach ($result_details as $key => $detail) {
+        foreach ($sorted_result_details as $index => $detail) {
             $updateData[] = [
                 'id'   => $detail->id,
-                $type  => $key + 1,
+                'total_mark' => $detail->total_mark,
+                $type  => $index + 1,
             ];
         }
 
@@ -507,7 +749,7 @@ trait ResultTrait
 
         // Fetch students not already in the subject marks
         $students = Student::select('id', 'name_en', 'software_id')
-            ->when($pluckStudents, fn ($q) => $q->whereNotIn('id', $pluckStudents))
+            ->when($pluckStudents, fn($q) => $q->whereNotIn('id', $pluckStudents))
             ->where([
                 'institution_id'    => $result->institution_id,
                 'academic_session_id' => $result->academic_session_id,
@@ -526,7 +768,7 @@ trait ResultTrait
         }
 
         // Prepare data for result details
-        $resultDetailsData = $students->map(fn ($student) => [
+        $resultDetailsData = $students->map(fn($student) => [
             'secondary_result_id' => $result->id,
             'student_id'          => $student->id,
         ])->toArray();
@@ -539,7 +781,7 @@ trait ResultTrait
             ->keyBy('student_id');
 
         // Prepare data for marks
-        $marksData = $resultDetails->map(fn ($detail) => [
+        $marksData = $resultDetails->map(fn($detail) => [
             'secondary_result_details_id' => $detail->id,
             'subject_id'                  => $subject_id,
             'updated_at'                  => now(),
